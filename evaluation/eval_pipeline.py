@@ -1,11 +1,3 @@
-"""
-RAGAS evaluation pipeline for the Agentic RAG Chatbot.
-
-Usage:
-    python -m evaluation.eval_pipeline
-    python -m evaluation.eval_pipeline --dataset path/to.json --max-samples 5
-"""
-
 from __future__ import annotations
 
 import argparse
