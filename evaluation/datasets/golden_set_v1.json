@@ -1,0 +1,202 @@
+[
+  {
+    "question": "What is the primary training difference between DeepSeek-R1-Zero and DeepSeek-R1?",
+    "ground_truth": "DeepSeek-R1-Zero is trained via large-scale reinforcement learning (RL) without supervised fine-tuning (SFT) as a preliminary step, whereas DeepSeek-R1 incorporates multi-stage training and a small amount of cold-start data before RL to enhance performance and readability [1], [2]."
+  },
+  {
+    "question": "What was the average annual Power Usage Effectiveness (PUE) for Google's data centers in 2023?",
+    "ground_truth": "In 2023, the average annual PUE for Google's global fleet of data centers was 1.10, compared to the industry average of 1.58 [3], [4]."
+  },
+  {
+    "question": "How does DeepSeek-R1's performance on the MATH-500 benchmark compare to OpenAI-o1-1217?",
+    "ground_truth": "DeepSeek-R1 achieves a score of 97.3% on MATH-500, which is on par with OpenAI-o1-1217's performance of 96.4% and significantly outperforms other models [5], [6]."
+  },
+  {
+    "question": "What volume of water did Google's water stewardship projects replenish in 2023?",
+    "ground_truth": "Google's water stewardship projects replenished an estimated 1 billion gallons of water in 2023, representing 18% of their freshwater consumption for data centers and offices [7], [8]."
+  },
+  {
+    "question": "What specific reinforcement learning algorithm does DeepSeek use to reduce training costs?",
+    "ground_truth": "DeepSeek employs Group Relative Policy Optimization (GRPO), which estimates the baseline from group scores rather than using a critic model that is typically the same size as the policy model [9]."
+  },
+  {
+    "question": "According to Google's 2024 report, what is the estimated potential of AI to mitigate global greenhouse gas emissions by 2030?",
+    "ground_truth": "AI has the potential to help mitigate 5–10% of global greenhouse gas (GHG) emissions by 2030 [10], [11]."
+  },
+  {
+    "question": "What are the two types of rewards used in DeepSeek-R1-Zero's rule-based reward system?",
+    "ground_truth": "The system uses accuracy rewards, which evaluate whether the response is correct, and format rewards, which enforce the model to enclose its reasoning process between '<think>' and '</think>' tags [12]."
+  },
+  {
+    "question": "Why did Google's Scope 2 emissions increase in 2023 despite achieving a 100% renewable energy match?",
+    "ground_truth": "Scope 2 emissions increased by 37% due to data center electricity consumption growth outpacing the ability to bring new carbon-free energy projects online (particularly in the U.S. and Asia-Pacific) and the termination of some renewable energy contracts before projects became operational [13]."
+  },
+  {
+    "question": "What performance milestone did the distilled DeepSeek-R1-Distill-Qwen-32B model achieve on the AIME 2024 benchmark?",
+    "ground_truth": "The DeepSeek-R1-Distill-Qwen-32B model achieved a 72.6% pass rate on AIME 2024, significantly outperforming the previous open-source QwQ-32B-Preview model and performing comparably to OpenAI-o1-mini [14]."
+  },
+  {
+    "question": "What is Google's goal regarding plastic in its hardware product packaging?",
+    "ground_truth": "Google has set a goal to make its product packaging 100% plastic-free by 2025 [15]."
+  },
+  {
+    "question": "What specific tags are used to enclose the reasoning process in DeepSeek-R1-Zero?",
+    "ground_truth": "The reasoning process is enclosed within <think> and </think> tags."
+  },
+  {
+    "question": "What 'aha moment' was observed during the training of DeepSeek-R1-Zero?",
+    "ground_truth": "The model learned to reevaluate its initial approach and allocate more thinking time to the problem, effectively learning how to think."
+  },
+  {
+    "question": "How does DeepSeek-R1-Zero's pass@1 score on the AIME 2024 benchmark compare to OpenAI-o1-0912?",
+    "ground_truth": "DeepSeek-R1-Zero achieved a pass@1 score of 71.0%, while OpenAI-o1-0912 achieved 74.4%."
+  },
+  {
+    "question": "What trend was observed regarding the average response length of DeepSeek-R1-Zero during its training process?",
+    "ground_truth": "The average response length consistently improved (increased) throughout the training process, indicating the model naturally learned to solve reasoning tasks with more thinking time."
+  },
+  {
+    "question": "Why did the DeepSeek team decide against using a Process Reward Model (PRM) for DeepSeek-R1?",
+    "ground_truth": "They faced challenges in defining fine-grain steps, determining the correctness of intermediate steps, and the risk of reward hacking, which would complicate the training pipeline."
+  },
+  {
+    "question": "Which open-source model series were used as the base for the distilled DeepSeek-R1 models?",
+    "ground_truth": "The distilled models were based on the Qwen and Llama series (specifically Qwen2.5 and Llama 3)."
+  },
+  {
+    "question": "What pass@1 score did the DeepSeek-R1-Distill-Qwen-7B model achieve on the AIME 2024 benchmark?",
+    "ground_truth": "The DeepSeek-R1-Distill-Qwen-7B model achieved a pass@1 score of 55.5%."
+  },
+  {
+    "question": "What are the two reinforcement learning (RL) stages incorporated in the DeepSeek-R1 training pipeline?",
+    "ground_truth": "The pipeline includes reasoning-oriented reinforcement learning (to enhance reasoning) and reinforcement learning for all scenarios (to align with human preferences and improve helpfulness/harmlessness)."
+  },
+  {
+    "question": "What specific issue regarding language usage was observed in DeepSeek-R1-Zero?",
+    "ground_truth": "DeepSeek-R1-Zero struggled with language mixing, often mixing multiple languages in its chain-of-thought responses."
+  },
+  {
+    "question": "In the comparison between distillation and reinforcement learning on a 32B model, how did DeepSeek-R1-Distill-Qwen-32B perform on MATH-500 compared to DeepSeek-R1-Zero-Qwen-32B?",
+    "ground_truth": "DeepSeek-R1-Distill-Qwen-32B scored 94.3% on MATH-500, significantly outperforming DeepSeek-R1-Zero-Qwen-32B, which scored 91.6%."
+  },
+  {
+    "question": "What base model was utilized to train DeepSeek-R1-Zero?",
+    "ground_truth": "DeepSeek-V3-Base was used as the base model."
+  },
+  {
+    "question": "Approximately how many reasoning-related training samples were collected for the supervised fine-tuning (SFT) stage of DeepSeek-R1?",
+    "ground_truth": "About 600,000 (600k) reasoning-related training samples were collected."
+  },
+  {
+    "question": "What percentile did DeepSeek-R1 achieve on the Codeforces benchmark?",
+    "ground_truth": "DeepSeek-R1 achieved the 96.3 percentile on Codeforces."
+  },
+  {
+    "question": "What specific reward signal was introduced in DeepSeek-R1's training to mitigate language mixing?",
+    "ground_truth": "A language consistency reward, calculated as the proportion of target language words in the chain-of-thought (CoT)."
+  },
+  {
+    "question": "What win-rate did DeepSeek-R1 achieve on the ArenaHard benchmark?",
+    "ground_truth": "DeepSeek-R1 achieved a win-rate of 92.3% on ArenaHard."
+  },
+  {
+    "question": "Why did the researchers apply reinforcement learning directly to the base model for DeepSeek-R1-Zero without supervised fine-tuning?",
+    "ground_truth": "To explore the potential of LLMs to develop reasoning capabilities and self-evolve purely through reinforcement learning without any supervised data."
+  },
+  {
+    "question": "Why has DeepSeek-R1 not shown a huge improvement over DeepSeek-V3 on software engineering benchmarks?",
+    "ground_truth": "Large-scale reinforcement learning was not extensively applied to software engineering tasks due to long evaluation times which impact the efficiency of the RL process."
+  },
+  {
+    "question": "What was the maximum generation length set for DeepSeek-R1 during evaluation benchmarks?",
+    "ground_truth": "The maximum generation length was set to 32,768 tokens."
+  },
+  {
+    "question": "In what year did Google first match 100% of its annual global electricity consumption with renewable energy?",
+    "ground_truth": "Google first achieved this milestone in 2017."
+  },
+  {
+    "question": "What percentage of Google's total carbon footprint in 2023 was attributed to Scope 3 emissions?",
+    "ground_truth": "Scope 3 emissions represented 75% of Google's total carbon footprint in 2023."
+  },
+  {
+    "question": "What was the Power Usage Effectiveness (PUE) of Google's 'The Dalles, Oregon (2nd facility)' data center in 2023?",
+    "ground_truth": "The PUE for The Dalles, Oregon (2nd facility) was 1.07 in 2023."
+  },
+  {
+    "question": "Since 2012, what value has Google's average annual fleet-wide PUE stayed at or below?",
+    "ground_truth": "The average annual fleet-wide PUE has stayed at or below 1.12 since 2012."
+  },
+  {
+    "question": "What was the total waste diversion rate for Google's global operations in 2023?",
+    "ground_truth": "The total waste diversion rate was 78% in 2023."
+  },
+  {
+    "question": "What is Google's specific quantitative target for water replenishment by 2030?",
+    "ground_truth": "Google aims to replenish 120% of the freshwater volume it consumes, on average, across its offices and data centers by 2030."
+  },
+  {
+    "question": "What was the total water consumption for Google's data centers in 2023?",
+    "ground_truth": "Google's data centers consumed 6.1 billion gallons of water in 2023."
+  },
+  {
+    "question": "Which specific grid region in Canada achieved a 100% carbon-free energy (CFE) score for Google's data centers in 2023?",
+    "ground_truth": "The Hydro-Québec grid region achieved 100% CFE."
+  },
+  {
+    "question": "What is the function of Google's 'Green Light' AI tool?",
+    "ground_truth": "It helps city traffic engineers optimize the timing of traffic lights to reduce stop-and-go traffic and fuel consumption."
+  },
+  {
+    "question": "By what percentage did Google's total GHG emissions increase in 2023 compared to the 2019 base year?",
+    "ground_truth": "Total GHG emissions increased by 48% compared to the 2019 base year."
+  },
+  {
+    "question": "What percentage of the plastic used in Google products manufactured in 2023 was recycled content?",
+    "ground_truth": "34% of the plastic used was recycled content."
+  },
+  {
+    "question": "How many water stewardship projects had Google supported as of the end of 2023?",
+    "ground_truth": "Google had supported 74 water stewardship projects."
+  },
+  {
+    "question": "What was Google's total electricity consumption in 2023?",
+    "ground_truth": "Total electricity consumption was 25,307,000 MWh (or approximately 25.3 TWh)."
+  },
+  {
+    "question": "What is Google's '1 gigaton aspiration'?",
+    "ground_truth": "It is an aspiration to help individuals, cities, and other partners collectively reduce 1 gigaton of carbon equivalent emissions annually by 2030 through Google's products."
+  },
+  {
+    "question": "As of the end of 2023, how many acres of habitat has Google created or restored on its campuses and surrounding urban landscapes?",
+    "ground_truth": "Approximately 67 acres of habitat."
+  },
+  {
+    "question": "What is the purpose of Google's 'Cool Roofs' tool?",
+    "ground_truth": "It uses AI and aerial imagery to identify areas where reflective roofs would be impactful in reducing indoor and outdoor temperatures."
+  },
+  {
+    "question": "What was the total value of Google's Scope 1 emissions in 2023?",
+    "ground_truth": "Scope 1 emissions were 79,400 tCO2e."
+  },
+  {
+    "question": "By what percentage did Google reduce food waste per Googler in 2023 compared to 2019?",
+    "ground_truth": "Food waste per Googler was reduced by 38%."
+  },
+  {
+    "question": "What percentage of packaging was plastic-free for the Pixel 8 and Pixel 8 Pro?",
+    "ground_truth": "The packaging for Pixel 8 and Pixel 8 Pro used 100% plastic-free materials."
+  },
+  {
+    "question": "What was the average regional Carbon-Free Energy (CFE) percentage for Google's data centers in the Asia Pacific region in 2023?",
+    "ground_truth": "The average regional CFE for Asia Pacific was 12%."
+  },
+  {
+    "question": "What capability does Google's Flood Hub provide?",
+    "ground_truth": "It provides riverine flood forecasts up to seven days in advance."
+  },
+  {
+    "question": "How many electric vehicle charging ports has Google installed at its offices in the United States and Canada as of 2023?",
+    "ground_truth": "Google has installed more than 6,000 electric vehicle charging ports."
+  }
+]

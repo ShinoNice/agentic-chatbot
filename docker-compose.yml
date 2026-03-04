@@ -1,0 +1,39 @@
+services:
+
+  # ─── FastAPI Backend ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentic-chatbot-api
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    volumes:
+      # Mount data folder so the vector store persists across container restarts
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ─── Streamlit UI ───────────────────────────────────────────────────────────
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentic-chatbot-ui
+    command: streamlit run ui/streamlit_frontend.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

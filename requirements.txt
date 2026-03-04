@@ -1,0 +1,98 @@
+# ==============================
+# === LangChain Ecosystem ===
+# ==============================
+langchain
+langchain-community
+langchain-core
+langchain-docling
+langchain-openai
+langchain-pinecone
+langchain-text-splitters
+langchain-google-genai
+langchain-huggingface
+langgraph
+langsmith
+
+# ==============================
+# === Vector Stores & Retrieval ===
+# ==============================
+chromadb
+faiss-cpu
+pinecone
+rank-bm25
+sentence-transformers
+flashrank
+
+# ==============================
+# === Document Processing ===
+# ==============================
+docling
+pymupdf
+pypdf
+python-docx
+beautifulsoup4
+
+# ==============================
+# === Data & Schemas ===
+# ==============================
+pydantic
+pydantic-settings
+pandas
+
+# ==============================
+# === Database (CRITICAL ADD) ===
+# ==============================
+sqlalchemy
+alembic
+asyncpg
+
+# ==============================
+# === API ===
+# ==============================
+fastapi
+uvicorn
+gunicorn
+httpx
+python-jose[cryptography]
+passlib[bcrypt]
+
+# ==============================
+# === Caching (CRITICAL ADD) ===
+# ==============================
+redis
+
+# ==============================
+# === UI ===
+# ==============================
+streamlit
+gradio
+
+# ==============================
+# === Config & Logging ===
+# ==============================
+pyyaml
+python-dotenv
+python-json-logger
+loguru
+
+# ==============================
+# === Evaluation & Observability ===
+# ==============================
+ragas
+deepeval
+arize-phoenix
+prometheus-client
+
+# ==============================
+# === Utilities ===
+# ==============================
+tenacity
+mcp
+
+# ==============================
+# === Dev & Testing ===
+# ==============================
+pytest
+ruff
+mypy
+ipykernel

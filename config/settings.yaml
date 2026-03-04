@@ -1,0 +1,31 @@
+# LLM Model Configuration
+model_settings:
+  primary_llm: "gpt-4o-mini"
+  secondary_llm: "gpt-4o-mini"
+  embedding_model: "text-embedding-3-small"
+  temperature: 0.2
+  max_tokens: 2000
+
+# RAG & Retrieval Parameters
+rag_settings:
+  raw_data_dir: "data/raw"
+  cache_dir: "data/cache"
+  vector_db_path: "data/vector_db"
+  pinecone_index_name: "ai-multiagent-index"
+  chunk_size: 1000
+  chunk_overlap: 200
+  top_k: 10
+  hybrid_weights: [0.4, 0.6]
+  cache_expiry_days: 7
+
+# Docling PDF Pipeline Configuration
+docling_settings:
+  do_ocr: true   
+  force_full_page_ocr: false
+  images_scale: 1.0     
+  min_chunks_fallback: 5  
+
+# Application Settings
+app:
+  debug_mode: true
+  max_iterations: 3
