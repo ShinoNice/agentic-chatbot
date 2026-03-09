@@ -8,7 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class LLMSettings(BaseModel):
     primary_llm: str
-    secondary_llm: str
     embedding_model: str
     temperature: float
     max_tokens: int
@@ -20,7 +19,6 @@ class RAGSettings(BaseModel):
     chunk_overlap: int
     vector_db_path: str
     cache_dir: str
-    cache_expiry_days: int
     top_k: int
     hybrid_weights: List[float]
     pinecone_index_name: str
@@ -33,6 +31,12 @@ class DoclingSettings(BaseModel):
     min_chunks_fallback: int = 5
 
 
+class AppSettings(BaseModel):
+    debug_mode: bool = True
+    max_iterations: int = 3
+    cors_origins: List[str] = ["*"]
+
+
 class Settings(BaseSettings):
     """Merges .env secrets with YAML application config."""
 
@@ -42,6 +46,7 @@ class Settings(BaseSettings):
     llm: LLMSettings
     rag: RAGSettings
     docling: DoclingSettings = Field(default_factory=DoclingSettings)
+    app: AppSettings = Field(default_factory=AppSettings)
     prompts: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = SettingsConfigDict(
@@ -65,11 +70,13 @@ def load_all_configs() -> Settings:
             prompts[prompt_file.stem] = yaml.safe_load(f)
 
     docling_data = yaml_data.get("docling_settings", {})
+    app_data = yaml_data.get("app", {})
 
     return Settings(
         llm=LLMSettings(**yaml_data["model_settings"]),
         rag=RAGSettings(**yaml_data["rag_settings"]),
         docling=DoclingSettings(**docling_data),
+        app=AppSettings(**app_data),
         prompts=prompts,
     )
 

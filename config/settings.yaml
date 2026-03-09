@@ -1,7 +1,6 @@
 # LLM Model Configuration
 model_settings:
   primary_llm: "gpt-4o-mini"
-  secondary_llm: "gpt-4o-mini"
   embedding_model: "text-embedding-3-small"
   temperature: 0.2
   max_tokens: 2000
@@ -16,7 +15,6 @@ rag_settings:
   chunk_overlap: 200
   top_k: 10
   hybrid_weights: [0.4, 0.6]
-  cache_expiry_days: 7
 
 # Docling PDF Pipeline Configuration
 docling_settings:
@@ -29,3 +27,5 @@ docling_settings:
 app:
   debug_mode: true
   max_iterations: 3
+  cors_origins:
+    - "*"
