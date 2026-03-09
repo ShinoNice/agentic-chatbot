@@ -25,9 +25,7 @@ _ROOT_DIR = str(Path(__file__).resolve().parent.parent)
 if _ROOT_DIR not in sys.path:
     sys.path.insert(0, _ROOT_DIR)
 
-from src.main import AIAgentSystem  # noqa: E402
-from src.retrieval.hybrid_search import HybridSearcher  # noqa: E402
-from src.workflow.orchestrator import RAGOrchestrator  # noqa: E402
+from src.api.dependencies import SystemManager  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +43,8 @@ class ThrottledChatOpenAI(ChatOpenAI):
         return super()._generate(*args, **kwargs)
 
 
-def _ensure_orchestrator(system: AIAgentSystem) -> None:
-    if system.orchestrator is not None:
-        return
-    vector_store = system.vector_manager.get_vector_store()
-    system.searcher = HybridSearcher(vector_store)
-    system.orchestrator = RAGOrchestrator(system.searcher)
-
-
 async def _collect_samples(
-    system: AIAgentSystem,
+    system: SystemManager,
     raw_data: List[dict],
     max_samples: int,
 ) -> List[SingleTurnSample]:
@@ -62,10 +52,9 @@ async def _collect_samples(
 
     for idx, item in enumerate(raw_data[:max_samples], start=1):
         question = item["question"]
-        logger.info("Processing sample %d/%d: %s",
-                    idx, max_samples, question[:60])
+        logger.info("Processing sample %d/%d: %s", idx, max_samples, question[:60])
 
-        result = await system.orchestrator.run(question)
+        result = await system.query(question)
 
         samples.append(
             SingleTurnSample(
@@ -102,8 +91,11 @@ async def run_evaluation(
     dataset_path: str = _DEFAULT_DATASET,
     max_samples: int = _DEFAULT_MAX_SAMPLES,
 ) -> None:
-    system = AIAgentSystem()
-    _ensure_orchestrator(system)
+    system = SystemManager()
+    await system.try_connect_existing()
+    if not system.is_ready:
+        logger.error("Knowledge base not ready. Ingest documents first.")
+        return
 
     with open(dataset_path, "r", encoding="utf-8") as f:
         raw_data: List[dict] = json.load(f)
@@ -139,19 +131,20 @@ def _parse_args() -> argparse.Namespace:
         description="Run RAGAS evaluation against the Agentic RAG pipeline.",
     )
     parser.add_argument(
-        "--dataset", default=_DEFAULT_DATASET,
+        "--dataset",
+        default=_DEFAULT_DATASET,
         help="Path to the golden-set JSON file (default: %(default)s).",
     )
     parser.add_argument(
-        "--max-samples", type=int, default=_DEFAULT_MAX_SAMPLES,
+        "--max-samples",
+        type=int,
+        default=_DEFAULT_MAX_SAMPLES,
         help="Max samples to evaluate (default: %(default)s).",
     )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO,
-                        format="%(levelname)s | %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
     args = _parse_args()
-    asyncio.run(run_evaluation(dataset_path=args.dataset,
-                max_samples=args.max_samples))
+    asyncio.run(run_evaluation(dataset_path=args.dataset, max_samples=args.max_samples))

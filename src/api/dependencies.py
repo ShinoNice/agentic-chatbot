@@ -9,7 +9,6 @@ to live across many HTTP requests.
 
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -68,8 +67,7 @@ class SystemManager:
             vs = self.vector_manager.get_vector_store()
             self.searcher = HybridSearcher(vs)
             self.orchestrator = RAGOrchestrator(self.searcher)
-            logger.info(
-                "SystemManager: connected to existing vector store.")
+            logger.info("SystemManager: connected to existing vector store.")
         except Exception as exc:
             logger.info(
                 f"SystemManager: no existing vector store found ({exc}). "
@@ -96,12 +94,10 @@ class SystemManager:
                 "message": f"No PDF files found in {raw_dir}.",
             }
 
-        logger.info(
-            f"SystemManager: ingesting {len(pdf_files)} document(s) …")
+        logger.info(f"SystemManager: ingesting {len(pdf_files)} document(s) …")
 
         chunks = self.processor.process(pdf_files)
-        vector_store = self.vector_manager.create_index(
-            chunks, namespace=namespace)
+        vector_store = self.vector_manager.create_index(chunks, namespace=namespace)
 
         self.searcher = HybridSearcher(vector_store, documents=chunks)
         self.orchestrator = RAGOrchestrator(self.searcher)

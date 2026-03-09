@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.dependencies import init_system
 from src.api.routes import router
+from src.core.config_loader import settings
 from src.core.logger import logger
 
 
@@ -17,8 +18,7 @@ async def lifespan(application: FastAPI):
     system = init_system()
     await system.try_connect_existing()
     logger.info(
-        f"Knowledge base ready: {system.is_ready} "
-        f"(store: {system.vector_store_type})"
+        f"Knowledge base ready: {system.is_ready} (store: {system.vector_store_type})"
     )
     yield
     logger.info("API shutting down.")
@@ -39,7 +39,7 @@ def create_app() -> FastAPI:
     # ── CORS (permissive for local dev) ───────────────────────────────
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.app.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
