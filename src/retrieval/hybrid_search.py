@@ -1,4 +1,4 @@
-import pickle
+import json
 from pathlib import Path
 from typing import List, Optional
 
@@ -20,7 +20,7 @@ class HybridSearcher:
         self.weights = settings.rag.hybrid_weights
 
         self.cache_dir = Path(settings.rag.cache_dir)
-        self.bm25_path = self.cache_dir / "bm25_retriever.pkl"
+        self.bm25_path = self.cache_dir / "bm25_documents.json"
 
     def get_retriever(self):
         """Create and return the hybrid ensemble retriever, or vector-only fallback."""
@@ -47,30 +47,36 @@ class HybridSearcher:
         )
 
     def _get_or_create_bm25(self) -> BM25Retriever:
-        """Load BM25 index from cache or build and persist a new one."""
+        """Load BM25 documents from cache and rebuild, or build and persist a new index."""
         if self.bm25_path.exists():
             try:
-                logger.info("Loading BM25 index from cache.")
-                with open(self.bm25_path, "rb") as f:
-                    retriever = pickle.load(f)
-                    retriever.k = self.top_k
-                    return retriever
+                logger.info("Loading BM25 documents from cache.")
+                with open(self.bm25_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                docs = [
+                    Document(page_content=d["page_content"], metadata=d["metadata"])
+                    for d in data
+                ]
+                retriever = BM25Retriever.from_documents(docs)
+                retriever.k = self.top_k
+                return retriever
             except Exception as e:
                 logger.warning(f"BM25 cache corrupted, rebuilding: {e}")
 
         if not self.documents:
-            raise ValueError(
-                "Documents are required to build the initial BM25 index."
-            )
+            raise ValueError("Documents are required to build the initial BM25 index.")
 
-        logger.info(
-            f"Building new BM25 index for {len(self.documents)} chunks.")
+        logger.info(f"Building new BM25 index for {len(self.documents)} chunks.")
         retriever = BM25Retriever.from_documents(self.documents)
         retriever.k = self.top_k
 
         try:
-            with open(self.bm25_path, "wb") as f:
-                pickle.dump(retriever, f)
+            data = [
+                {"page_content": d.page_content, "metadata": d.metadata}
+                for d in self.documents
+            ]
+            with open(self.bm25_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, default=str)
         except Exception as e:
             logger.error(f"Failed to save BM25 cache: {e}")
 

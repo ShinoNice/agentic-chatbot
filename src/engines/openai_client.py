@@ -39,10 +39,12 @@ class OpenAIClient(BaseLLM):
             )
 
         try:
-            response = await model.ainvoke([
-                ("system", system_prompt),
-                ("human", user_prompt),
-            ])
+            response = await model.ainvoke(
+                [
+                    ("system", system_prompt),
+                    ("human", user_prompt),
+                ]
+            )
             return response.content
         except Exception as e:
             logger.error(f"OpenAI Generation Error: {e}", exc_info=True)

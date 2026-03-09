@@ -9,8 +9,9 @@ import yaml
 
 
 def setup_logging():
-    config_file = Path(__file__).resolve(
-    ).parent.parent.parent / "config" / "logging_config.yaml"
+    config_file = (
+        Path(__file__).resolve().parent.parent.parent / "config" / "logging_config.yaml"
+    )
     if config_file.exists():
         with open(config_file, "r") as f:
             config = yaml.safe_load(f)
@@ -18,8 +19,7 @@ def setup_logging():
                 logging.config.dictConfig(config)
             except Exception as e:
                 logging.basicConfig(level=logging.INFO)
-                print(
-                    f"DEBUG: Logging config failed, using basic config. Error: {e}")
+                print(f"DEBUG: Logging config failed, using basic config. Error: {e}")
     else:
         logging.basicConfig(level=logging.INFO)
 

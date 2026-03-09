@@ -88,14 +88,12 @@ class VectorStoreManager:
 
         except Exception as e:
             logger.error(f"Pinecone setup failed: {e}")
-            raise VectorStoreConnectionError(
-                "Could not connect to Pinecone cloud.")
+            raise VectorStoreConnectionError("Could not connect to Pinecone cloud.")
 
     def _setup_chroma(self, documents: List[Document]) -> Chroma:
         """Persist documents into a local ChromaDB instance."""
         try:
-            logger.info(
-                f"Initializing local ChromaDB at {self.persist_directory}")
+            logger.info(f"Initializing local ChromaDB at {self.persist_directory}")
             ids = [doc.metadata.get("chunk_hash") for doc in documents]
 
             return Chroma.from_documents(
@@ -107,7 +105,8 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Chroma setup failed: {e}")
             raise VectorStoreConnectionError(
-                f"Local ChromaDB initialization failed: {e}")
+                f"Local ChromaDB initialization failed: {e}"
+            )
 
     def get_vector_store(
         self,

@@ -1,5 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 
+from src.core.config_loader import settings
 from src.core.exceptions import AgentError
 from src.core.logger import logger
 from src.engines.base import BaseLLM
@@ -13,16 +14,21 @@ class VerificationAgent:
 
     def __init__(self, llm_engine: BaseLLM):
         self.model = llm_engine.get_model()
+        self.system_persona = (
+            settings.prompts.get("agent_system", {})
+            .get("verifier", {})
+            .get("system_message", "You are a strict QA Auditor.")
+        )
 
         try:
-            self.structured_llm = self.model.with_structured_output(
-                VerificationReport)
+            self.structured_llm = self.model.with_structured_output(VerificationReport)
         except Exception as e:
             logger.error(f"Failed to bind VerificationReport schema: {e}")
-            raise AgentError(
-                "LLM provider does not support structured output.")
+            raise AgentError("LLM provider does not support structured output.")
 
-    async def verify(self, question: str, answer: str, documents: list) -> VerificationReport:
+    async def verify(
+        self, question: str, answer: str, documents: list
+    ) -> VerificationReport:
         """Compare the draft answer against the provided documents."""
         if not answer:
             logger.warning("VerificationAgent received an empty draft answer.")
@@ -33,32 +39,41 @@ class VerificationAgent:
             for d in documents
         )
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", (
-                "You are a strict QA Auditor. Your task is to verify an AI-generated answer "
-                "against the provided search context.\n\n"
-                "Audit Instructions:\n"
-                "1. Check if every factual claim in the answer is backed by the context.\n"
-                "2. Identify 'Unsupported Claims' (claims not mentioned in context).\n"
-                "3. Identify 'Contradictions' (claims that conflict with the context).\n"
-                "4. Assess if the answer actually addresses the user's question.\n\n"
-                "Be pedantic. If the context says 'maybe' and the answer says 'definitely', "
-                "mark it as unsupported."
-            )),
-            ("human", (
-                "USER QUESTION: {question}\n\n"
-                "DRAFT ANSWER TO AUDIT:\n{answer}\n\n"
-                "SOURCE CONTEXT:\n{context}"
-            )),
-        ])
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    (
+                        f"{self.system_persona}\n\n"
+                        "Audit Instructions:\n"
+                        "1. Check if every factual claim in the answer is backed by the context.\n"
+                        "2. Identify 'Unsupported Claims' (claims not mentioned in context).\n"
+                        "3. Identify 'Contradictions' (claims that conflict with the context).\n"
+                        "4. Assess if the answer actually addresses the user's question.\n\n"
+                        "Be pedantic. If the context says 'maybe' and the answer says 'definitely', "
+                        "mark it as unsupported."
+                    ),
+                ),
+                (
+                    "human",
+                    (
+                        "USER QUESTION: {question}\n\n"
+                        "DRAFT ANSWER TO AUDIT:\n{answer}\n\n"
+                        "SOURCE CONTEXT:\n{context}"
+                    ),
+                ),
+            ]
+        )
 
         try:
             chain = prompt | self.structured_llm
-            report: VerificationReport = await chain.ainvoke({
-                "question": question,
-                "answer": answer,
-                "context": context_text[:_MAX_CONTEXT_CHARS],
-            })
+            report: VerificationReport = await chain.ainvoke(
+                {
+                    "question": question,
+                    "answer": answer,
+                    "context": context_text[:_MAX_CONTEXT_CHARS],
+                }
+            )
 
             if not report.supported:
                 logger.warning(

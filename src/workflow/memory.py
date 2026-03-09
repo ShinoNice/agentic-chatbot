@@ -5,12 +5,13 @@ from langchain_core.documents import Document
 from src.schemas.agent_schemas import RelevanceStatus, VerificationReport
 
 
-def merge_documents(old_docs: List[Document], new_docs: List[Document]) -> List[Document]:
+def merge_documents(
+    old_docs: List[Document], new_docs: List[Document]
+) -> List[Document]:
     """Merge new documents into existing state, deduplicating by chunk hash."""
     existing_hashes = {d.metadata.get("chunk_hash") for d in old_docs}
     return list(old_docs) + [
-        doc for doc in new_docs
-        if doc.metadata.get("chunk_hash") not in existing_hashes
+        doc for doc in new_docs if doc.metadata.get("chunk_hash") not in existing_hashes
     ]
 
 

@@ -32,13 +32,14 @@ st.set_page_config(
 # ── Session state initialisation ──────────────────────────────────────
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [] 
+    st.session_state.messages = []
 
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
 
 # ── API helpers ───────────────────────────────────────────────────────
+
 
 def _api_base_url() -> str:
     """Return the user-configured backend URL (no trailing slash)."""
@@ -75,6 +76,7 @@ def _call_api(method: str, path: str, **kwargs: Any) -> httpx.Response | None:
 
 
 # ── UI component helpers ──────────────────────────────────────────────
+
 
 def _render_verification_warning(verification: dict[str, Any]) -> None:
     """Display a warning banner when the verifier flags issues."""
@@ -128,6 +130,7 @@ def _append_message(
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────
+
 
 def _render_sidebar() -> None:
     """Build the sidebar with settings, health check, and ingestion."""
@@ -200,8 +203,7 @@ def _handle_ingest() -> None:
     data = resp.json()
     files = data.get("files_processed", [])
     st.success(
-        f"✅ Ingested **{len(files)}** file(s) → "
-        f"**{data['total_chunks']}** chunks."
+        f"✅ Ingested **{len(files)}** file(s) → **{data['total_chunks']}** chunks."
     )
     if files:
         with st.expander("Files processed"):
@@ -210,6 +212,7 @@ def _handle_ingest() -> None:
 
 
 # ── Chat area ─────────────────────────────────────────────────────────
+
 
 def _render_chat_history() -> None:
     """Re-render all past messages (including badges) from session state."""
@@ -268,6 +271,7 @@ def _safe_detail(resp: httpx.Response) -> str:
 
 
 # ── Main ──────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     """Application entry-point: sidebar, history, and chat input loop."""

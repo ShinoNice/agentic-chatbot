@@ -13,11 +13,14 @@ from pydantic import BaseModel, Field
 
 # ── Chat ──────────────────────────────────────────────────────────────
 
+
 class ChatRequest(BaseModel):
     """Payload sent by the frontend for every user question."""
 
     question: str = Field(
-        ..., min_length=1, max_length=2000,
+        ...,
+        min_length=1,
+        max_length=2000,
         description="The user's natural-language question.",
     )
     session_id: Optional[str] = Field(
@@ -41,8 +44,7 @@ class SourceDocument(BaseModel):
 
     source: str = Field(description="Original file name.")
     page_number: Optional[int] = None
-    snippet: str = Field(
-        default="", description="First ~200 chars of the chunk.")
+    snippet: str = Field(default="", description="First ~200 chars of the chunk.")
 
 
 class ChatResponse(BaseModel):
@@ -50,14 +52,14 @@ class ChatResponse(BaseModel):
 
     answer: str
     session_id: Optional[str] = None
-    relevance_status: str = Field(
-        description="CAN_ANSWER | PARTIAL | NO_MATCH")
+    relevance_status: str = Field(description="CAN_ANSWER | PARTIAL | NO_MATCH")
     verification: Optional[VerificationDetail] = None
     sources: List[SourceDocument] = Field(default_factory=list)
     iterations: int = 0
 
 
 # ── Ingestion ─────────────────────────────────────────────────────────
+
 
 class IngestRequest(BaseModel):
     """Optional parameters for the ingestion endpoint."""
@@ -73,12 +75,12 @@ class IngestResponse(BaseModel):
 
     files_processed: List[str]
     total_chunks: int
-    status: str = Field(
-        default="completed", pattern="^(pending|completed|failed)$")
+    status: str = Field(default="completed", pattern="^(pending|completed|failed)$")
     message: str = ""
 
 
 # ── Health ────────────────────────────────────────────────────────────
+
 
 class HealthResponse(BaseModel):
     status: str = "ok"

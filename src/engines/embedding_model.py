@@ -21,8 +21,7 @@ class OpenAIEmbeddingModel(BaseEmbeddingModel):
 
     def __init__(self, model_name: Optional[str] = None):
         self.model_name = model_name or settings.llm.embedding_model
-        logger.info(
-            f"Initializing OpenAI Embeddings with model: {self.model_name}")
+        logger.info(f"Initializing OpenAI Embeddings with model: {self.model_name}")
 
         try:
             self._embeddings = OpenAIEmbeddings(

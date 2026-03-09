@@ -2,16 +2,17 @@ from typing import Any, Dict
 
 from langgraph.graph import END, START, StateGraph
 
-from src.workflow.agents.relevance_checker import RelevanceCheckerAgent as RelevanceChecker
+from src.workflow.agents.relevance_checker import (
+    RelevanceCheckerAgent as RelevanceChecker,
+)
 from src.workflow.agents.researcher import ResearchAgent
 from src.workflow.agents.verifier import VerificationAgent
 from src.workflow.memory import AgentState
+from src.core.config_loader import settings
 from src.core.logger import logger
 from src.engines.openai_client import OpenAIClient
 from src.retrieval.hybrid_search import HybridSearcher
 from src.schemas.agent_schemas import RelevanceStatus
-
-_MAX_RETRIES = 3
 
 
 class RAGOrchestrator:
@@ -65,7 +66,9 @@ class RAGOrchestrator:
 
     async def node_check_relevance(self, state: AgentState) -> Dict[str, Any]:
         logger.info("--- NODE: RELEVANCE AUDIT ---")
-        status = await self.relevance_checker.check(state["question"], state["documents"])
+        status = await self.relevance_checker.check(
+            state["question"], state["documents"]
+        )
         return {"relevance_status": status}
 
     async def node_research(self, state: AgentState) -> Dict[str, Any]:
@@ -77,7 +80,9 @@ class RAGOrchestrator:
     async def node_verify(self, state: AgentState) -> Dict[str, Any]:
         logger.info("--- NODE: VERIFICATION AUDIT ---")
         report = await self.verifier.verify(
-            state["question"], state["draft_answer"], state["documents"],
+            state["question"],
+            state["draft_answer"],
+            state["documents"],
         )
         return {"verification": report}
 
@@ -95,12 +100,11 @@ class RAGOrchestrator:
         if report.supported:
             return "finalize"
 
-        if state["iterations"] >= _MAX_RETRIES:
+        if state["iterations"] >= settings.app.max_iterations:
             logger.error("Max retries reached. Returning best-effort answer.")
             return "finalize"
 
-        logger.info(
-            f"Hallucination found (iter {state['iterations']}). Retrying...")
+        logger.info(f"Hallucination found (iter {state['iterations']}). Retrying...")
         return "retry"
 
     async def run(self, question: str):

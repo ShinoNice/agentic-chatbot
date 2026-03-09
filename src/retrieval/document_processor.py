@@ -1,7 +1,7 @@
 import hashlib
-import pickle
+import json
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import RapidOcrOptions, PdfPipelineOptions
@@ -18,7 +18,7 @@ from src.core.exceptions import DocumentProcessingError
 
 class DocumentProcessor:
     """
-    Handles the conversion of raw PDF files into cleaned, hashed, 
+    Handles the conversion of raw PDF files into cleaned, hashed,
     and metadata-enriched document chunks.
     """
 
@@ -33,12 +33,14 @@ class DocumentProcessor:
             do_ocr=settings.docling.do_ocr,
             images_scale=settings.docling.images_scale,
             ocr_options=RapidOcrOptions(
-                force_full_page_ocr=settings.docling.force_full_page_ocr),
+                force_full_page_ocr=settings.docling.force_full_page_ocr
+            ),
             allow_external_plugins=True,
         )
         self.docling_converter = DocumentConverter(
-            format_options={InputFormat.PDF: PdfFormatOption(
-                pipeline_options=pipeline_options)}
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+            }
         )
 
         self.splitter = RecursiveCharacterTextSplitter(
@@ -58,9 +60,8 @@ class DocumentProcessor:
             try:
                 chunks = self._process_single_file(path)
                 all_chunks.extend(chunks)
-            except Exception as e:
-                logger.error(f"Failed to process {path.name}: {e}")
-                # Continue to next file rather than crashing the whole batch
+            except DocumentProcessingError as e:
+                logger.error(str(e))
                 continue
 
         return all_chunks
@@ -69,29 +70,44 @@ class DocumentProcessor:
         """
         Processes one PDF: Load -> Clean -> Chunk -> Hash -> Cache.
         """
-        # 1. Check Cache
-        cache_file = self.cache_dir / f"{file_path.stem}.pkl"
-        if cache_file.exists():
-            logger.info(f"Loading {file_path.name} from cache...")
-            with open(cache_file, "rb") as f:
-                return pickle.load(f)
+        try:
+            cache_file = self.cache_dir / f"{file_path.stem}.json"
+            if cache_file.exists():
+                logger.info(f"Loading {file_path.name} from cache...")
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return [
+                    Document(page_content=d["page_content"], metadata=d["metadata"])
+                    for d in data
+                ]
 
-        logger.info(f"Parsing new file: {file_path.name}")
+            logger.info(f"Parsing new file: {file_path.name}")
 
-        # 2. Extract Text (Hybrid Strategy)
-        documents = self._extract_text(file_path)
+            # 2. Extract Text (Hybrid Strategy)
+            documents = self._extract_text(file_path)
 
-        # 3. Create Chunks
-        chunks = self.splitter.split_documents(documents)
+            # 3. Create Chunks
+            chunks = self.splitter.split_documents(documents)
 
-        # 4. Enrich with Hashes and Metadata
-        final_chunks = self._enrich_metadata(chunks, file_path)
+            # 4. Enrich with Hashes and Metadata
+            final_chunks = self._enrich_metadata(chunks, file_path)
 
-        # 5. Save to Cache
-        with open(cache_file, "wb") as f:
-            pickle.dump(final_chunks, f)
+            # 5. Save to Cache
+            data = [
+                {"page_content": c.page_content, "metadata": c.metadata}
+                for c in final_chunks
+            ]
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, default=str)
 
-        return final_chunks
+            return final_chunks
+
+        except DocumentProcessingError:
+            raise
+        except Exception as e:
+            raise DocumentProcessingError(
+                f"Processing failed for {file_path.name}: {e}"
+            ) from e
 
     def _extract_text(self, file_path: Path) -> List[Document]:
         """
@@ -102,8 +118,9 @@ class DocumentProcessor:
         """
         try:
             # Attempt Docling (Better for tables/headers)
-            loader = DoclingLoader(file_path=str(
-                file_path), converter=self.docling_converter)
+            loader = DoclingLoader(
+                file_path=str(file_path), converter=self.docling_converter
+            )
             with suppress_stderr():
                 docs = loader.load()
 
@@ -120,7 +137,8 @@ class DocumentProcessor:
             return docs
         except Exception as e:
             logger.warning(
-                f"Docling failed for {file_path.name}, falling back to PyMuPDF. Error: {e}")
+                f"Docling failed for {file_path.name}, falling back to PyMuPDF. Error: {e}"
+            )
 
             # Fallback to PyMuPDF (Fast and robust)
             loader = PyMuPDFLoader(str(file_path))
@@ -129,7 +147,9 @@ class DocumentProcessor:
                 d.metadata["parser"] = "pymupdf"
             return docs
 
-    def _enrich_metadata(self, chunks: List[Document], file_path: Path) -> List[Document]:
+    def _enrich_metadata(
+        self, chunks: List[Document], file_path: Path
+    ) -> List[Document]:
         """
         Adds deterministic hashes and source info to each chunk.
         This is critical for the VectorStore's deduplication logic.
@@ -140,10 +160,12 @@ class DocumentProcessor:
                 f"{file_path.name}_{chunk.page_content}".encode()
             ).hexdigest()
 
-            chunk.metadata.update({
-                "source": file_path.name,
-                "chunk_index": i,
-                "chunk_hash": content_hash,
-                "chunk_size": len(chunk.page_content)
-            })
+            chunk.metadata.update(
+                {
+                    "source": file_path.name,
+                    "chunk_index": i,
+                    "chunk_hash": content_hash,
+                    "chunk_size": len(chunk.page_content),
+                }
+            )
         return chunks

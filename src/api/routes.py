@@ -32,6 +32,7 @@ router = APIRouter()
 
 # ── Health ────────────────────────────────────────────────────────────
 
+
 @router.get(
     "/health",
     response_model=HealthResponse,
@@ -48,6 +49,7 @@ async def health(system: SystemManager = Depends(get_system)):
 
 
 # ── Ingestion ─────────────────────────────────────────────────────────
+
 
 @router.post(
     "/ingest",
@@ -78,6 +80,7 @@ async def ingest_documents(
 
 
 # ── Chat ──────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/chat",
@@ -141,12 +144,13 @@ async def chat(
     sources: List[SourceDocument] = []
     for doc in result.get("documents", []):
         meta = doc.metadata if hasattr(doc, "metadata") else {}
-        sources.append(SourceDocument(
-            source=meta.get("source", "unknown"),
-            page_number=meta.get("page_number") or meta.get("page"),
-            snippet=doc.page_content[:200] if hasattr(
-                doc, "page_content") else "",
-        ))
+        sources.append(
+            SourceDocument(
+                source=meta.get("source", "unknown"),
+                page_number=meta.get("page_number") or meta.get("page"),
+                snippet=doc.page_content[:200] if hasattr(doc, "page_content") else "",
+            )
+        )
 
     return ChatResponse(
         answer=answer,

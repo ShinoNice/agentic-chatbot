@@ -47,7 +47,5 @@ class VerificationReport(BaseModel):
 class ResearchOutput(BaseModel):
     """Standardized output for the ResearchAgent generation step."""
 
-    draft_answer: str = Field(
-        description="Generated answer based on documents.")
-    context_used: str = Field(
-        description="Raw text used to generate the answer.")
+    draft_answer: str = Field(description="Generated answer based on documents.")
+    context_used: str = Field(description="Raw text used to generate the answer.")
