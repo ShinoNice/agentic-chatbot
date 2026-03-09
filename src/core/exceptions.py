@@ -1,5 +1,6 @@
 class AIProjectError(Exception):
     """Base class for all exceptions raised by the AI Project."""
+
     def __init__(self, message: str, details: dict = None):
         super().__init__(message)
         self.message = message
@@ -8,55 +9,41 @@ class AIProjectError(Exception):
 
 # --- Retrieval & RAG Exceptions ---
 
+
 class RetrievalError(AIProjectError):
     """Base class for errors occurring in the RAG pipeline."""
+
     pass
 
 
 class VectorStoreConnectionError(RetrievalError):
     """Raised when the connection to Chroma or Pinecone fails."""
+
     pass
 
 
 class DocumentProcessingError(AIProjectError):
     """Raised when parsing, chunking, or hashing a document fails."""
-    pass
 
-
-class CacheError(DocumentProcessingError):
-    """Raised when local pickle-based caching fails to read or write."""
     pass
 
 
 # --- Agent & LLM Exceptions ---
 
+
 class AgentError(AIProjectError):
     """Base class for errors occurring within the LangGraph agentic loop."""
+
     pass
 
 
 class LLMResponseError(AgentError):
     """Raised when the LLM returns an empty response or malformed data."""
+
     pass
 
 
 class RelevanceAuditError(AgentError):
     """Raised when the RelevanceChecker fails to classify a document chunk."""
-    pass
 
-
-class MaxIterationsReachedError(AgentError):
-    """Raised when an agent reaches the maximum loop threshold (e.g., 3 retries)."""
-    pass
-
-
-# --- Configuration & Validation Exceptions ---
-
-class ConfigurationError(AIProjectError):
-    """Raised when settings.yaml or .env variables are missing or invalid."""
-    pass
-
-
-class SchemaValidationError(AIProjectError):
-    """Raised when LLM structured output fails to match a Pydantic model."""
     pass
