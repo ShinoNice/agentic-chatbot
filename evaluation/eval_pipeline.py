@@ -56,13 +56,16 @@ async def _collect_samples(
 
         result = await system.query(question)
 
+        context = [
+            doc.page_content if hasattr(doc, "page_content") else str(doc)
+            for doc in result.get("documents", [])
+        ]
+
         samples.append(
             SingleTurnSample(
                 user_input=question,
                 response=result.get("draft_answer", "N/A"),
-                retrieved_contexts=[
-                    doc.page_content for doc in result.get("documents", [])
-                ],
+                retrieved_contexts=context,
                 reference=item["ground_truth"],
             )
         )
@@ -72,7 +75,7 @@ async def _collect_samples(
 
 def _build_evaluator_llm() -> LangchainLLMWrapper:
     base_llm = ThrottledChatOpenAI(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         temperature=0,
         model_kwargs={"response_format": {"type": "json_object"}},
     )
