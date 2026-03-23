@@ -1,0 +1,11 @@
+To run CLI:
+uv run python -m src.main
+
+To run API:
+uv run uvicorn src.api.app:app --reload --port 8001
+
+To run Streamlit:
+uv run streamlit run ui/streamlit_frontend.py --server.port 8501
+
+To run Evaluation:
+uv run python evaluation/eval_pipeline.py --max-samples 2

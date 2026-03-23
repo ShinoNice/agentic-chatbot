@@ -1,0 +1,64 @@
+# FIRST TIME INITIALIZING GIT
+1.  Initialize the repo
+git init
+
+2. Verify if .env is ignored
+git check-ignore -v .env
+
+3. Stage everything
+git add .
+
+4. Check Status
+git status
+
+5. Make Commits
+git commit -m "feat: etc etc"
+
+6. Create GitHub repo
+Name: agentic-chatbot (or whatever you prefer)
+Visibility: Private
+Leave everything else unchecked (no README, no .gitignore, no license — you already have all of that)
+Click Create repository
+
+7. Connect and push 
+git remote add origin https://github.com/ShinoNice/agentic-chatbot.git
+git branch -M main
+git push -u origin main
+
+--------------------------------------------------------------------------------------------------------
+
+status → add → commit → push is the loop we repeat every time
+
+1. Check Status
+git status
+
+2. Stage Changes
+# Stage everything
+git add .
+# OR specific files
+git add src/workflow/agents/researcher.py
+
+3. Commit Changes
+git commit -m "your message here"
+
+"""
+feat: add new agent tool
+fix: handle empty retrieval results
+refactor: simplify orchestrator logic
+docs: update README with eval instructions
+chore: update requirements
+"""
+
+4. Push to Git
+git push
+
+
+----------------------------------------------------------------------------------------------------------
+
+Other commands we occasionally:
+git log --oneline          # see commit history
+git diff                   # see unstaged changes
+git diff --staged          # see staged changes before committing
+git pull                   # get latest changes (if working from multiple machines)
+git reset --hard HEAD      # deletes all tracked pending changes
+git clean -fd              # deletes all untracked pending changes
