@@ -1,11 +1,11 @@
-1º To create a main project folder we do: 
+1º To create a main project folder: 
 mkdir C:\Users\YourUsername\projects
 cd C:\Users\YourUsername\projects
 
 2º If we wish to clone a repo inside the desired folder:
-git clone https://etcetctetctetcetc.git
+git clone https://github.com/<your-username>/<repo-name>
 
-3º To install UV we do:
+3º To install UV:
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
 4º Build env
@@ -14,7 +14,7 @@ uv init
 5º Install packages
 uv add -r requirements.txt
 
-5º To run the uv env we do:
+5º To run the uv env:
 uv sync
 
 6º To activate the env in powershell:
@@ -27,6 +27,7 @@ uv pip install lib1 lib2 lib3 - to install whatever libs
 uv pip install -r requirements.txt - to install packages in the txt file
 uv pip list - to list current packages
 
-To make sure we can run the env in jupyter notebooks we do:
+
+To run the env in jupyter notebooks:
 cd C:\Users\bpu320145\projects\coursera_RAGagent; uv add ipykernel --dev
 C:/Users/bpu320145/projects/coursera_RAGagent/.venv/Scripts/python.exe -m ipykernel install --user --name=coursera_ragagent --display-name "Python (coursera_ragagent)"
