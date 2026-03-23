@@ -25,7 +25,7 @@ A multi-agent RAG (Retrieval-Augmented Generation) chatbot built with LangGraph,
 - Docker & Docker Compose (for containerised run)
 - API keys — copy `.env.example` to `.env` and fill in your keys
 
-## Quick Start — Local
+## Quick Start - Local
 
 ```bash
 # 1. Clone and enter the project
