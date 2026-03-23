@@ -4,15 +4,15 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
-import time
 from pathlib import Path
 from typing import List
 
 import pandas as pd
-from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI
 from ragas import EvaluationDataset, SingleTurnSample, evaluate
-from ragas.llms import LangchainLLMWrapper
+from ragas.llms import llm_factory
 from ragas.metrics import (
     AnswerRelevancy,
     ContextPrecision,
@@ -26,21 +26,13 @@ if _ROOT_DIR not in sys.path:
     sys.path.insert(0, _ROOT_DIR)
 
 from src.api.dependencies import SystemManager  # noqa: E402
+from src.core.config_loader import settings  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_DATASET = "evaluation/datasets/golden_set_v1.json"
+_DEFAULT_DATASET = "evaluation/datasets/golden_set_v2.json"
 _DEFAULT_MAX_SAMPLES = 10
 _RESULTS_DIR = Path("evaluation/results")
-_TPM_DELAY_SECONDS = 2.0
-
-
-class ThrottledChatOpenAI(ChatOpenAI):
-    """Injects a per-call delay to stay within TPM rate limits."""
-
-    def _generate(self, *args, **kwargs):
-        time.sleep(_TPM_DELAY_SECONDS)
-        return super()._generate(*args, **kwargs)
 
 
 async def _collect_samples(
@@ -73,20 +65,31 @@ async def _collect_samples(
     return samples
 
 
-def _build_evaluator_llm() -> LangchainLLMWrapper:
-    base_llm = ThrottledChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
-        model_kwargs={"response_format": {"type": "json_object"}},
+def _build_evaluator_llm():
+    return llm_factory(
+        "gpt-4o-mini",
+        client=AsyncOpenAI(api_key=settings.openai_api_key),
     )
-    return LangchainLLMWrapper(base_llm)
 
 
 def _save_results(result, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M")
+
+    df = result.to_pandas()
+
+    # Keep question for identification, drop bulky text columns
+    score_cols = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
+    keep = ["user_input"] + [c for c in score_cols if c in df.columns]
+    df_slim = df[keep]
+
     output_path = output_dir / f"report_{timestamp}.csv"
-    result.to_pandas().to_csv(output_path, index=False)
+    df_slim.to_csv(output_path, index=False)
+
+    # Also save the full dataset for debugging if needed
+    full_path = output_dir / f"report_{timestamp}_full.csv"
+    df.to_csv(full_path, index=False)
+
     return output_path
 
 
@@ -94,6 +97,8 @@ async def run_evaluation(
     dataset_path: str = _DEFAULT_DATASET,
     max_samples: int = _DEFAULT_MAX_SAMPLES,
 ) -> None:
+    os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)
+
     system = SystemManager()
     await system.try_connect_existing()
     if not system.is_ready:

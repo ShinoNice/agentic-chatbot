@@ -1,12 +1,3 @@
-"""
-API route definitions for the Agentic RAG Chatbot.
-
-Three endpoints:
-    GET  /health  – liveness / readiness probe
-    POST /ingest  – trigger PDF ingestion pipeline
-    POST /chat    – ask a question against the knowledge base
-"""
-
 from __future__ import annotations
 
 import uuid

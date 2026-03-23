@@ -18,7 +18,7 @@ rag_settings:
 
 # Docling PDF Pipeline Configuration
 docling_settings:
-  do_ocr: true   
+  do_ocr: false
   force_full_page_ocr: false
   images_scale: 1.0     
   min_chunks_fallback: 5  

@@ -1,16 +1,10 @@
-"""
-Singleton lifecycle manager for the core AI system.
-
-Provides a FastAPI-compatible dependency that wraps DocumentProcessor,
-VectorStoreManager, HybridSearcher and RAGOrchestrator — exactly the
-same components wired together in src.main.AIAgentSystem, but designed
-to live across many HTTP requests.
-"""
-
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from langchain_core.documents import Document
 
 from src.core.config_loader import settings
 from src.core.logger import logger
@@ -65,9 +59,32 @@ class SystemManager:
         """
         try:
             vs = self.vector_manager.get_vector_store()
-            self.searcher = HybridSearcher(vs)
+
+            # Reconstruct documents from cached chunk JSONs so that
+            # HybridSearcher can build (or rebuild) its BM25 index.
+            cache_dir = Path(settings.rag.cache_dir)
+            cached_docs: List[Document] = []
+            for jf in sorted(cache_dir.glob("*.json")):
+                if jf.name == "bm25_documents.json":
+                    continue
+                try:
+                    with open(jf, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    cached_docs.extend(
+                        Document(page_content=d["page_content"], metadata=d["metadata"])
+                        for d in data
+                    )
+                except Exception as e:
+                    logger.warning(f"Skipping corrupt cache file {jf.name}: {e}")
+
+            self.searcher = HybridSearcher(
+                vs, documents=cached_docs if cached_docs else None
+            )
             self.orchestrator = RAGOrchestrator(self.searcher)
-            logger.info("SystemManager: connected to existing vector store.")
+            logger.info(
+                "SystemManager: connected to existing vector store "
+                f"({len(cached_docs)} cached document chunks loaded for BM25)."
+            )
         except Exception as exc:
             logger.info(
                 f"SystemManager: no existing vector store found ({exc}). "

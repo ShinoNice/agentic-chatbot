@@ -1,11 +1,3 @@
-"""
-API-specific request / response models.
-
-These are deliberately separate from the internal domain schemas
-(src.schemas.*) so the public contract stays stable even when
-internals change.
-"""
-
 from typing import List, Optional
 
 from pydantic import BaseModel, Field

@@ -1,0 +1,202 @@
+[
+  {
+    "question": "What is the primary training difference between DeepSeek-R1-Zero and DeepSeek-R1?",
+    "ground_truth": "DeepSeek-R1-Zero is trained via large-scale reinforcement learning (RL) without supervised fine-tuning (SFT) as a preliminary step, whereas DeepSeek-R1 incorporates multi-stage training and a small amount of cold-start data before RL to enhance performance and readability [1], [2]."
+  },
+  {
+    "question": "How does DeepSeek-R1's performance on the MATH-500 benchmark compare to OpenAI-o1-1217?",
+    "ground_truth": "DeepSeek-R1 achieves a score of 97.3% on MATH-500, performing on par with OpenAI-o1-1217's score of 96.4% [3], [4]."
+  },
+  {
+    "question": "What reinforcement learning algorithm does DeepSeek-R1-Zero use to save training costs?",
+    "ground_truth": "DeepSeek-R1-Zero uses Group Relative Policy Optimization (GRPO), which foregoes a critic model of the same size as the policy model and instead estimates the baseline from group scores [5], [6]."
+  },
+  {
+    "question": "Why did the DeepSeek team choose not to use a neural reward model for DeepSeek-R1-Zero?",
+    "ground_truth": "They found that neural reward models may suffer from reward hacking during large-scale reinforcement learning, and retraining the reward model requires additional training resources while complicating the pipeline [7]."
+  },
+  {
+    "question": "What are the two types of rewards used in the rule-based reward system for training DeepSeek-R1-Zero?",
+    "ground_truth": "The system consists of accuracy rewards, which evaluate if the response is correct, and format rewards, which enforce the model to put its thinking process between '<think>' and '</think>' tags [8]."
+  },
+  {
+    "question": "What was the result of applying large-scale reinforcement learning directly to Qwen-32B-Base without distillation?",
+    "ground_truth": "The model, DeepSeek-R1-Zero-Qwen-32B, achieved performance on par with QwQ-32B-Preview, but performed significantly worse across all benchmarks compared to the DeepSeek-R1-Distill-Qwen-32B model which was distilled from DeepSeek-R1 [9], [10]."
+  },
+  {
+    "question": "What are the three main limitations the DeepSeek team found when attempting to use a Process Reward Model (PRM)?",
+    "ground_truth": "The limitations are: the difficulty of explicitly defining a fine-grain step in general reasoning, the challenge of determining whether an intermediate step is correct, and the inevitable issue of reward hacking once a model-based PRM is introduced [11]."
+  },
+  {
+    "question": "How did DeepSeek-R1 perform on the AlpacaEval 2.0 benchmark, and what was its average summary length?",
+    "ground_truth": "DeepSeek-R1 achieved an impressive length-controlled win-rate of 87.6% on AlpacaEval 2.0 with an average summary length of 2,218 characters, indicating it avoids introducing length bias during GPT-based evaluations [12], [13], [14]."
+  },
+  {
+    "question": "What features does Cloudflare's AI Crawl Control offer to website operators?",
+    "ground_truth": "AI Crawl Control empowers creators by allowing them to monitor AI crawler activity, block crawlers with a single click, and charge AI companies for access based on their source or intent [15], [16]."
+  },
+  {
+    "question": "By what percentage are Cloudflare's 12th generation servers more requests-per-second per kilowatt (RPS/kW) efficient than the 11th generation?",
+    "ground_truth": "Cloudflare’s 12th generation servers deliver 84% more requests per second per kilowatt compared to the previous Gen 11 model [17]."
+  },
+  {
+    "question": "What was Cloudflare's Scope 1 location-based emissions in CY2024?",
+    "ground_truth": "Cloudflare recorded Scope 1 location-based emissions of 198 metric tons (MT) of carbon dioxide equivalent (CO2e) in 2024 [18]."
+  },
+  {
+    "question": "What is the main purpose of Cloudflare Radar?",
+    "ground_truth": "Cloudflare Radar is a free public resource that aggregates anonymized data from Cloudflare services to allow anyone to monitor and investigate Internet patterns, trends, attacks, shutdowns, and anomalies globally [19]."
+  },
+  {
+    "question": "Which three new partners did Cloudflare welcome to Project Galileo in 2025?",
+    "ground_truth": "In 2025, Cloudflare welcomed EngageMedia, the Open Culture Foundation, and the NGO Information Sharing and Analysis Center (NGO-ISAC) to Project Galileo [20]."
+  },
+  {
+    "question": "According to Cloudflare's data on top email threats, what percentage of malicious emails contained a deceptive link?",
+    "ground_truth": "According to the data, 51.7% of malicious emails contained a deceptive link [21]."
+  },
+  {
+    "question": "What is the purpose of the Web Bot Auth standard Cloudflare is co-developing?",
+    "ground_truth": "The Web Bot Auth standard allows bots to cryptographically authenticate their identity reliably, addressing the fact that traditional IP and User-Agent header checks are becoming too slow and inaccurate for modern web traffic [22]."
+  },
+  {
+    "question": "What action did Cloudflare take in September 2025 against RaccoonO365?",
+    "ground_truth": "In coordination with Microsoft and US law enforcement, Cloudflare executed a coordinated takedown of all identified RaccoonO365 domains, protected users from accessing compromised webpages, and terminated their accounts [23]."
+  },
+  {
+    "question": "How much revenue did NVIDIA's Data Center platform generate in Fiscal 2024, and what was the percentage increase from the previous year?",
+    "ground_truth": "In Fiscal 2024, NVIDIA's Data Center revenue rose 217% to a record $47.5 billion [24], [25]."
+  },
+  {
+    "question": "What are NVIDIA Inference Microservices (NIM)?",
+    "ground_truth": "NIMs are cloud-native AI containers that run everywhere there are NVIDIA GPUs, connecting the AI ecosystem of model developers, platform providers, and enterprises with a standardized path to run custom AI models [26], [27], [28]."
+  },
+  {
+    "question": "How many transistors are on the NVIDIA B200 Tensor Core GPU, and how much faster is its inference compared to the Hopper architecture?",
+    "ground_truth": "The B200 Tensor Core GPU features 208 billion transistors and delivers 30X faster inference than the Hopper architecture [29]."
+  },
+  {
+    "question": "What is the purpose of the Earth-2 initiative launched by NVIDIA?",
+    "ground_truth": "Earth-2 is an initiative to harness AI and high-performance computing to create a digital twin of the Earth, enabling scientists and policymakers to make ultra-high-resolution predictions of climate change impacts [30], [31]."
+  },
+  {
+    "question": "What was the total shareholder return (TSR) for NVIDIA over the 5-year period ending in Fiscal 2024?",
+    "ground_truth": "NVIDIA's 5-Year Total Shareholder Return was 1436% [32], [33]."
+  },
+  {
+    "question": "How much power could be saved annually if all data centers were accelerated with GPU and DPU accelerators instead of CPUs?",
+    "ground_truth": "Accelerated data centers could save 19 terawatt-hours of electricity annually if run on GPU and DPU accelerators instead of CPUs [34]."
+  },
+  {
+    "question": "Which companies are among the first to access NVIDIA NIMs?",
+    "ground_truth": "Adobe, Box, Cadence, Cloudera, Cohesity, CrowdStrike, Dropbox, Getty Images, NetApp, SAP, ServiceNow, Shutterstock, and Snowflake are among the first to access NVIDIA NIMs [35]."
+  },
+  {
+    "question": "What is NVIDIA's goal for renewable electricity by the end of Fiscal 2025?",
+    "ground_truth": "By the end of Fiscal 2025, NVIDIA aims to purchase or generate enough renewable energy to match 100% of its global electricity usage for offices and data centers under its operational control [36], [37], [38]."
+  },
+  {
+    "question": "What was NVIDIA's total revenue for Fiscal 2025, and what was the year-over-year percentage increase?",
+    "ground_truth": "NVIDIA's total revenue for Fiscal 2025 was $130.5 billion, representing a 114% increase year on year [39], [40]."
+  },
+  {
+    "question": "What are the three computing platforms required for NVIDIA's robotics development pipeline?",
+    "ground_truth": "The pipeline requires NVIDIA DGX for training AI models, NVIDIA Omniverse and Cosmos for simulation and synthetic data generation, and NVIDIA Jetson AGX (or Jetson Thor) for deployment [41], [42]."
+  },
+  {
+    "question": "What is the significance of the NVIDIA Cosmos platform?",
+    "ground_truth": "NVIDIA Cosmos is a world foundation model platform trained on real-world physics, which when paired with Omniverse, allows teams to simulate, test, and refine intelligent systems before deployment [43], [44]."
+  },
+  {
+    "question": "How much did NVIDIA's Compute & Networking segment revenue grow in Fiscal 2025?",
+    "ground_truth": "The Compute & Networking segment revenue reached $116.2 billion in Fiscal 2025, up 145% year on year [40]."
+  },
+  {
+    "question": "By what multiple does NVIDIA's Blackwell Ultra boost AI factory output compared to NVIDIA Hopper?",
+    "ground_truth": "NVIDIA Blackwell Ultra boosts AI factory output by up to 50x over NVIDIA Hopper [45], [46]."
+  },
+  {
+    "question": "What was NVIDIA's overall employee turnover rate in Fiscal 2025?",
+    "ground_truth": "NVIDIA's overall employee turnover rate in Fiscal 2025 was 2.5% [47], [48]."
+  },
+  {
+    "question": "According to NVIDIA, what are the three AI scaling laws currently governing the industry?",
+    "ground_truth": "The three AI scaling laws are Pre-Training Scaling, Post-Training Scaling, and Inference (Test-Time) Scaling [49], [50]."
+  },
+  {
+    "question": "Which AI models were cited by NVIDIA as being purpose-built for reasoning and deployable as NIMs?",
+    "ground_truth": "The Nemotron models are purpose-built for reasoning and deployed as NIMs [51], [44]."
+  },
+  {
+    "question": "How did NVIDIA's Automotive platform perform in Fiscal 2025 in terms of revenue?",
+    "ground_truth": "The Automotive platform achieved $1.7 billion in full-year revenue, up 55% from the prior year [52], [44]."
+  },
+  {
+    "question": "What was the average annual Power Usage Effectiveness (PUE) for Google's data centers in 2023?",
+    "ground_truth": "In 2023, the average annual PUE for Google's global fleet of data centers was 1.10, compared to the industry average of 1.58 [53], [54]."
+  },
+  {
+    "question": "How much water did Google estimate its water stewardship projects replenished in 2023, and what percentage of their freshwater consumption did this represent?",
+    "ground_truth": "Google replenished an estimated 1 billion gallons of water in 2023, which represented 18% of their freshwater consumption for data centers and offices [55], [56], [57]."
+  },
+  {
+    "question": "By what percentage did Google's total greenhouse gas (GHG) emissions increase in 2023 compared to the 2019 base year?",
+    "ground_truth": "Google's total GHG emissions increased by 48% compared to the 2019 target base year, reaching 14.3 million tCO2e [58], [59], [60]."
+  },
+  {
+    "question": "What percentage of Google's global data center and office electricity load was matched with carbon-free energy (CFE) on an hourly basis in 2023?",
+    "ground_truth": "Google maintained a global average of 64% carbon-free energy (CFE) on an hourly basis across its data centers and offices in 2023 [58], [61], [62]."
+  },
+  {
+    "question": "How many of Google's 44 grid regions achieved at least 90% carbon-free energy in 2023?",
+    "ground_truth": "Ten of Google's 44 grid regions achieved at least 90% carbon-free energy in 2023 [55], [63], [62]."
+  },
+  {
+    "question": "What is the 'Travel Impact Model' (TIM) created by Google used for?",
+    "ground_truth": "The Travel Impact Model is a public model used for predicting the per-passenger CO2e emissions produced by a flight, which powers emissions estimates on Google Flights and other travel sites [64]."
+  },
+  {
+    "question": "By how much did the use of fuel-efficient routing in Google Maps reduce GHG emissions since its launch?",
+    "ground_truth": "Fuel-efficient routing enabled more than 2.9 million metric tons of GHG emissions reductions since its launch in late 2021 [65]."
+  },
+  {
+    "question": "What percentage of plastic used in Google's consumer hardware products manufactured in 2023 was recycled content?",
+    "ground_truth": "34% of the plastic used in Google products manufactured in 2023 was recycled content, a decrease from 41% in 2022 due to changes in the product mix [66], [67]."
+  },
+  {
+    "question": "What reduction in food waste per Googler did Google achieve in 2023 compared to their 2019 baseline?",
+    "ground_truth": "In 2023, Google reduced food waste per Googler by approximately 38% compared to 2019 [68], [69]."
+  },
+  {
+    "question": "What are the three strategic priorities recommended by the OpenAI Nonprofit Commission for building a democratic AI ecosystem?",
+    "ground_truth": "The three priorities are: closing the gap in economic opportunity, treating AI literacy as democratic infrastructure, and evolving philanthropy into a civic platform [70], [71]."
+  },
+  {
+    "question": "How many individuals and organizations did the OpenAI Nonprofit Commission engage with over three months?",
+    "ground_truth": "The Commission engaged with more than 500 individuals and 100 organizations representing over 7 million Americans [72]."
+  },
+  {
+    "question": "What is the proposed 'Emergency Fund to Stabilize the Civic Ecosystem' intended to do?",
+    "ground_truth": "The emergency fund is intended to act as a critical stopgap to triage the gap left by the collapse or withdrawal of critical philanthropic infrastructure and sustain organizations, networks, and movements essential to the democratic imagination [73]."
+  },
+  {
+    "question": "According to the Commission, what role should human leadership play in the OpenAI nonprofit's executive team?",
+    "ground_truth": "The Commission recommends that the nonprofit explicitly codify human leadership, stating that the moral authority to steward public benefit cannot be delegated to non-sentient agents [74]."
+  },
+  {
+    "question": "How does the Commission suggest the OpenAI nonprofit structure term limits for grantmaking staff?",
+    "ground_truth": "The Commission suggests that every grantmaking role, especially those with allocation authority, should rotate after a fixed period, with intentional pathways for community and practitioner entry into those roles [75]."
+  },
+  {
+    "question": "What mechanism does the Commission recommend the nonprofit establish for regional decision-making?",
+    "ground_truth": "The Commission recommends establishing regional hubs composed of trusted local institutions to foster cross-sector collaboration and co-design funding priorities, governance practices, and tool development [76]."
+  },
+  {
+    "question": "What specific legal and regulatory accountability does the Commission affirm as a critical feature of the nonprofit’s democratic orientation?",
+    "ground_truth": "The Commission affirms that oversight by the Attorneys General of California and Delaware is a critical feature and public asset for the nonprofit’s democratic orientation [77], [78]."
+  },
+  {
+    "question": "According to the Commission, what must happen to eliminate 'appeasement logic' in philanthropy?",
+    "ground_truth": "Trust must be extended at the front end and accountability co-designed, rather than forcing grantees to mirror the language or metrics of funders to receive support, which stifles innovation and scale [79]."
+  }
+]

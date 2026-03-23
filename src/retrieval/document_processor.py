@@ -1,19 +1,20 @@
 import hashlib
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 from typing import List
 
-from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import RapidOcrOptions, PdfPipelineOptions
-from docling.document_converter import DocumentConverter, PdfFormatOption
+import fitz
 from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_docling import DoclingLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
 from src.core.config_loader import settings
-from src.core.logger import logger, suppress_stderr
+from src.core.logger import logger
 from src.core.exceptions import DocumentProcessingError
+
+_DOCLING_TIMEOUT_SECONDS = 300
+_MAX_DOCLING_PAGES = 80
 
 
 class DocumentProcessor:
@@ -29,19 +30,7 @@ class DocumentProcessor:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.min_chunks_fallback = settings.docling.min_chunks_fallback
 
-        pipeline_options = PdfPipelineOptions(
-            do_ocr=settings.docling.do_ocr,
-            images_scale=settings.docling.images_scale,
-            ocr_options=RapidOcrOptions(
-                force_full_page_ocr=settings.docling.force_full_page_ocr
-            ),
-            allow_external_plugins=True,
-        )
-        self.docling_converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-            }
-        )
+        self._docling_converter = None  # lazy init — see _get_docling_converter()
 
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
@@ -50,19 +39,52 @@ class DocumentProcessor:
             add_start_index=True,
         )
 
+    def _get_docling_converter(self):
+        """Lazily initialise the Docling converter on first use."""
+        if self._docling_converter is None:
+            logger.info("Initialising Docling DocumentConverter (first uncached PDF)...")
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import (
+                RapidOcrOptions,
+                PdfPipelineOptions,
+            )
+            from docling.document_converter import DocumentConverter, PdfFormatOption
+
+            pipeline_options = PdfPipelineOptions(
+                do_ocr=settings.docling.do_ocr,
+                images_scale=settings.docling.images_scale,
+                ocr_options=RapidOcrOptions(
+                    force_full_page_ocr=settings.docling.force_full_page_ocr
+                ),
+                allow_external_plugins=True,
+            )
+            self._docling_converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+                }
+            )
+            logger.info("Docling DocumentConverter ready.")
+        return self._docling_converter
+
     def process(self, file_paths: List[Path]) -> List[Document]:
         """
         Orchestrates the processing of multiple files.
         Checks cache first to avoid redundant computation.
         """
         all_chunks = []
+        failed = []
         for path in file_paths:
             try:
                 chunks = self._process_single_file(path)
                 all_chunks.extend(chunks)
+                logger.info(f"{path.name}: {len(chunks)} chunk(s)")
             except DocumentProcessingError as e:
                 logger.error(str(e))
+                failed.append(path.name)
                 continue
+
+        if failed:
+            logger.warning(f"Failed to process {len(failed)} file(s): {failed}")
 
         return all_chunks
 
@@ -113,19 +135,31 @@ class DocumentProcessor:
         """
         Attempts Docling for structure, falls back to PyMuPDF.
         Uses a pre-configured DocumentConverter to avoid std::bad_alloc on
-        image-heavy pages. Also falls back if Docling returns suspiciously few
-        chunks (silent partial failure from swallowed C++ errors).
+        image-heavy pages. Runs Docling in a thread with a timeout to prevent
+        hangs on large/image-heavy PDFs. Also falls back if Docling returns
+        suspiciously few chunks (silent partial failure from swallowed C++ errors).
         """
-        try:
-            # Attempt Docling (Better for tables/headers)
-            loader = DoclingLoader(
-                file_path=str(file_path), converter=self.docling_converter
+        with fitz.open(file_path) as pdf:
+            page_count = len(pdf)
+        if page_count > _MAX_DOCLING_PAGES:
+            logger.info(
+                f"Skipping Docling for {file_path.name} ({page_count} pages > "
+                f"{_MAX_DOCLING_PAGES}). Using PyMuPDF directly."
             )
-            with suppress_stderr():
-                docs = loader.load()
+            return self._pymupdf_fallback(file_path)
 
-            # Guard against silent partial failures: if Docling drops most of the
-            # document (e.g. std::bad_alloc swallowed internally), fall back.
+        try:
+            from langchain_docling import DoclingLoader
+
+            logger.info(f"Attempting Docling parse for {file_path.name} (timeout: {_DOCLING_TIMEOUT_SECONDS}s)...")
+            loader = DoclingLoader(
+                file_path=str(file_path), converter=self._get_docling_converter()
+            )
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(loader.load)
+                docs = future.result(timeout=_DOCLING_TIMEOUT_SECONDS)
+
             if len(docs) < self.min_chunks_fallback:
                 raise ValueError(
                     f"Docling returned only {len(docs)} document(s) for {file_path.name}, "
@@ -134,18 +168,28 @@ class DocumentProcessor:
 
             for d in docs:
                 d.metadata["parser"] = "docling"
+            logger.info(f"Docling parsed {file_path.name} successfully ({len(docs)} page(s)).")
             return docs
+        except TimeoutError:
+            logger.warning(
+                f"Docling timed out after {_DOCLING_TIMEOUT_SECONDS}s for {file_path.name}, "
+                f"falling back to PyMuPDF."
+            )
+            return self._pymupdf_fallback(file_path)
         except Exception as e:
             logger.warning(
                 f"Docling failed for {file_path.name}, falling back to PyMuPDF. Error: {e}"
             )
+            return self._pymupdf_fallback(file_path)
 
-            # Fallback to PyMuPDF (Fast and robust)
-            loader = PyMuPDFLoader(str(file_path))
-            docs = loader.load()
-            for d in docs:
-                d.metadata["parser"] = "pymupdf"
-            return docs
+    def _pymupdf_fallback(self, file_path: Path) -> List[Document]:
+        """Fast, robust fallback PDF loader."""
+        loader = PyMuPDFLoader(str(file_path))
+        docs = loader.load()
+        for d in docs:
+            d.metadata["parser"] = "pymupdf"
+        logger.info(f"PyMuPDF parsed {file_path.name} ({len(docs)} page(s)).")
+        return docs
 
     def _enrich_metadata(
         self, chunks: List[Document], file_path: Path
