@@ -70,3 +70,7 @@ htmlcov/
 # ─── uv ───────────────────────────────────────────────────────────────────────
 .uv/
 uv.lock
+
+# ─── Projects2026 workflow ────────────────────────────────────────────────────
+# Local session state (per-machine, not repo state).
+PROGRESS.md
