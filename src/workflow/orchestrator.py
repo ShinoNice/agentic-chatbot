@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict
 
 from langgraph.graph import END, START, StateGraph
@@ -9,9 +10,11 @@ from src.workflow.agents.researcher import ResearchAgent
 from src.workflow.agents.verifier import VerificationAgent
 from src.workflow.memory import AgentState
 from src.core.config_loader import settings
+from src.core.exceptions import RerankerError
 from src.core.logger import logger
 from src.engines.openai_client import OpenAIClient
 from src.retrieval.hybrid_search import HybridSearcher
+from src.retrieval.reranker import BGEReranker
 from src.schemas.agent_schemas import RelevanceStatus
 
 
@@ -26,6 +29,10 @@ class RAGOrchestrator:
         self.researcher = ResearchAgent(self.llm_engine)
         self.verifier = VerificationAgent(self.llm_engine)
 
+        self.reranker = (
+            BGEReranker(settings.rerank.model_name) if settings.rerank.enabled else None
+        )
+
         self.app = self._build_graph()
 
     def _build_graph(self):
@@ -33,12 +40,14 @@ class RAGOrchestrator:
         workflow = StateGraph(AgentState)
 
         workflow.add_node("retrieve", self.node_retrieve)
+        workflow.add_node("rerank", self.node_rerank)
         workflow.add_node("check_relevance", self.node_check_relevance)
         workflow.add_node("research", self.node_research)
         workflow.add_node("verify", self.node_verify)
 
         workflow.add_edge(START, "retrieve")
-        workflow.add_edge("retrieve", "check_relevance")
+        workflow.add_edge("retrieve", "rerank")
+        workflow.add_edge("rerank", "check_relevance")
 
         workflow.add_conditional_edges(
             "check_relevance",
@@ -62,7 +71,38 @@ class RAGOrchestrator:
         logger.info("--- NODE: RETRIEVAL ---")
         retriever = self.searcher.get_retriever()
         docs = await retriever.ainvoke(state["question"])
-        return {"documents": docs}
+        return {"candidate_documents": docs}
+
+    async def node_rerank(self, state: AgentState) -> Dict[str, Any]:
+        logger.info("--- NODE: RERANK ---")
+        candidates = state["candidate_documents"]
+
+        if not settings.rerank.enabled or self.reranker is None:
+            # Disabled path: forward all candidates. retrieve already returned
+            # rag.top_k docs (not candidate_k), so the LLM payload is unchanged
+            # from pre-reranker behavior.
+            return {"documents": candidates}
+
+        try:
+            reranked = await asyncio.to_thread(
+                self.reranker.rerank,
+                state["question"],
+                candidates,
+                settings.rerank.top_k,
+            )
+            logger.info(f"Reranked {len(candidates)} → {len(reranked)} chunks")
+            return {"documents": reranked}
+        except RerankerError as e:
+            # Graceful degradation: a broken reranker should not 500 the request.
+            # Truncate to top_k anyway so a silent reranker failure does not
+            # quietly triple the LLM token bill — better to ship a bounded
+            # payload of arbitrary candidates than the full candidate_k pool.
+            fallback = candidates[: settings.rerank.top_k]
+            logger.error(
+                f"Reranker failed, falling back to first {len(fallback)} "
+                f"candidates (untruncated pool was {len(candidates)}): {e}"
+            )
+            return {"documents": fallback}
 
     async def node_check_relevance(self, state: AgentState) -> Dict[str, Any]:
         logger.info("--- NODE: RELEVANCE AUDIT ---")
@@ -111,6 +151,7 @@ class RAGOrchestrator:
         """Execute the state machine for a given question."""
         initial_state = {
             "question": question,
+            "candidate_documents": [],
             "documents": [],
             "iterations": 0,
         }

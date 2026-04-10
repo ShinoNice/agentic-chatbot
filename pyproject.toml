@@ -33,6 +33,7 @@ dependencies = [
     "ragas>=0.4.3",
     "rank-bm25>=0.2.2",
     "ruff>=0.15.1",
+    "sentence-transformers>=3.0.0",
     "streamlit>=1.54.0",
     "uvicorn>=0.41.0",
 ]

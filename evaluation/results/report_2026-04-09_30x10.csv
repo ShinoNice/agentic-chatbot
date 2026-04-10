@@ -1,0 +1,11 @@
+user_input,faithfulness,answer_relevancy,context_precision,context_recall
+What is the primary training difference between DeepSeek-R1-Zero and DeepSeek-R1?,1.0,0.9949802951471002,0.9305555555400462,1.0
+How does DeepSeek-R1's performance on the MATH-500 benchmark compare to OpenAI-o1-1217?,1.0,0.9949475672918678,0.9888888888779013,1.0
+What reinforcement learning algorithm does DeepSeek-R1-Zero use to save training costs?,0.8,0.9850185515127049,0.9999999999,1.0
+Why did the DeepSeek team choose not to use a neural reward model for DeepSeek-R1-Zero?,1.0,1.0000000000000004,0.9999999999666667,1.0
+What are the two types of rewards used in the rule-based reward system for training DeepSeek-R1-Zero?,1.0,1.0,0.99999999998,1.0
+What was the result of applying large-scale reinforcement learning directly to Qwen-32B-Base without distillation?,1.0,0.961446895047305,0.7611111110958888,1.0
+What are the three main limitations the DeepSeek team found when attempting to use a Process Reward Model (PRM)?,1.0,0.9551667260602434,0.99999999998,1.0
+"How did DeepSeek-R1 perform on the AlpacaEval 2.0 benchmark, and what was its average summary length?",1.0,0.9614792144773485,0.9999999999833333,1.0
+What features does Cloudflare's AI Crawl Control offer to website operators?,1.0,1.0,0.5453968253859175,1.0
+By what percentage are Cloudflare's 12th generation servers more requests-per-second per kilowatt (RPS/kW) efficient than the 11th generation?,1.0,0.9403817221369476,0.9999999999,1.0

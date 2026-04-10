@@ -29,5 +29,5 @@ uv pip list - to list current packages
 
 
 To run the env in jupyter notebooks:
-cd C:\Users\bpu320145\projects\coursera_RAGagent; uv add ipykernel --dev
-C:/Users/bpu320145/projects/coursera_RAGagent/.venv/Scripts/python.exe -m ipykernel install --user --name=coursera_ragagent --display-name "Python (coursera_ragagent)"
+cd C:\Users\YourUsername\projects\coursera_RAGagent; uv add ipykernel --dev
+C:/Users/YourUsername/projects/coursera_RAGagent/.venv/Scripts/python.exe -m ipykernel install --user --name=coursera_ragagent --display-name "Python (coursera_ragagent)"

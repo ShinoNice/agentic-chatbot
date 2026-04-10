@@ -2,7 +2,7 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,16 +37,42 @@ class AppSettings(BaseModel):
     cors_origins: List[str] = ["*"]
 
 
+class RerankSettings(BaseModel):
+    """Cross-encoder reranker configuration.
+
+    `enabled` defaults to False so the eval baseline run reproduces
+    today's behavior. Flip to True (or override candidate_k/top_k) for
+    the post-rerank eval runs.
+    """
+
+    enabled: bool = False
+    model_name: str = "BAAI/bge-reranker-base"
+    candidate_k: int = 30
+    top_k: int = 5
+
+    @field_validator("top_k")
+    @classmethod
+    def top_k_within_candidates(cls, v, info):
+        candidate_k = info.data.get("candidate_k")
+        if candidate_k is not None and v > candidate_k:
+            raise ValueError(
+                f"rerank.top_k ({v}) must be <= rerank.candidate_k ({candidate_k})"
+            )
+        return v
+
+
 class Settings(BaseSettings):
     """Merges .env secrets with YAML application config."""
 
     openai_api_key: str = Field(alias="OPENAI_API_KEY")
     pinecone_api_key: str = Field(default="", alias="PINECONE_API_KEY")
+    api_key: str = Field(alias="API_KEY")
 
     llm: LLMSettings
     rag: RAGSettings
     docling: DoclingSettings = Field(default_factory=DoclingSettings)
     app: AppSettings = Field(default_factory=AppSettings)
+    rerank: RerankSettings = Field(default_factory=RerankSettings)
     prompts: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = SettingsConfigDict(
@@ -71,12 +97,14 @@ def load_all_configs() -> Settings:
 
     docling_data = yaml_data.get("docling_settings", {})
     app_data = yaml_data.get("app", {})
+    rerank_data = yaml_data.get("rerank_settings", {})
 
     return Settings(
         llm=LLMSettings(**yaml_data["model_settings"]),
         rag=RAGSettings(**yaml_data["rag_settings"]),
         docling=DoclingSettings(**docling_data),
         app=AppSettings(**app_data),
+        rerank=RerankSettings(**rerank_data),
         prompts=prompts,
     )
 

@@ -32,6 +32,17 @@ class SystemManager:
         self._files_indexed: List[str] = []
         self._total_chunks: int = 0
 
+    def _searcher_k(self) -> int:
+        """Decide how many candidates the retriever returns.
+
+        When reranking is enabled the retriever returns a wider candidate
+        pool (rerank.candidate_k) so the reranker has something to filter.
+        When disabled, fall back to the original rag.top_k.
+        """
+        if settings.rerank.enabled:
+            return settings.rerank.candidate_k
+        return settings.rag.top_k
+
     # ── Properties ────────────────────────────────────────────────────
 
     @property
@@ -78,7 +89,9 @@ class SystemManager:
                     logger.warning(f"Skipping corrupt cache file {jf.name}: {e}")
 
             self.searcher = HybridSearcher(
-                vs, documents=cached_docs if cached_docs else None
+                vs,
+                documents=cached_docs if cached_docs else None,
+                k=self._searcher_k(),
             )
             self.orchestrator = RAGOrchestrator(self.searcher)
             logger.info(
@@ -116,7 +129,9 @@ class SystemManager:
         chunks = self.processor.process(pdf_files)
         vector_store = self.vector_manager.create_index(chunks, namespace=namespace)
 
-        self.searcher = HybridSearcher(vector_store, documents=chunks)
+        self.searcher = HybridSearcher(
+            vector_store, documents=chunks, k=self._searcher_k()
+        )
         self.orchestrator = RAGOrchestrator(self.searcher)
 
         self._files_indexed = [p.name for p in pdf_files]

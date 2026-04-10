@@ -22,6 +22,12 @@ class VectorStoreConnectionError(RetrievalError):
     pass
 
 
+class RerankerError(RetrievalError):
+    """Raised when the cross-encoder reranker fails to load or score documents."""
+
+    pass
+
+
 class DocumentProcessingError(AIProjectError):
     """Raised when parsing, chunking, or hashing a document fails."""
 

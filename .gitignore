@@ -39,7 +39,12 @@ notebooks/.ipynb_checkpoints/
 notebooks/
 
 # ─── Evaluation Results ───────────────────────────────────────────────────────
-evaluation/results/
+# Slim summary CSVs (report_*.csv, delta_*.csv) are committed so the
+# RAGAS lift from the reranker is reproducible from the repo alone.
+evaluation/results/*
+!evaluation/results/report_*.csv
+!evaluation/results/delta_*.csv
+evaluation/results/report_*_full.csv
 
 # ─── Miscellaneous ───────────────────────────────────────────────────────────
 #misc/
@@ -71,6 +76,8 @@ htmlcov/
 .uv/
 uv.lock
 
-# ─── Projects2026 workflow ────────────────────────────────────────────────────
+# ─── CLAUDE FILES ────────────────────────────────────────────────────
 # Local session state (per-machine, not repo state).
 PROGRESS.md
+PROJECT_SUMMARY.md
+docs/
