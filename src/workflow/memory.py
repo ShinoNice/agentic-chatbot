@@ -19,6 +19,15 @@ class AgentState(TypedDict):
     """Shared state maintained throughout the LangGraph workflow."""
 
     question: str
+    # candidate_documents is written exactly once per query by node_retrieve
+    # and never re-written, so the default last-write-wins merge is correct.
+    # No reducer annotation needed.
+    candidate_documents: List[Document]
+    # documents is annotated with the merge_documents reducer for historical
+    # reasons (the original design contemplated multiple writers across the
+    # self-correction loop). Today only node_rerank writes to it, once per
+    # query — merge_documents([], reranked) == reranked, so the reducer is
+    # harmless. Left in place to avoid touching unrelated behavior.
     documents: Annotated[List[Document], merge_documents]
     relevance_status: RelevanceStatus
     draft_answer: Optional[str]

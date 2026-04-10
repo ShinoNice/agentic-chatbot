@@ -13,10 +13,15 @@ from src.core.logger import logger
 class HybridSearcher:
     """Combines dense (vector) and sparse (BM25) retrieval into a hybrid search."""
 
-    def __init__(self, vector_store, documents: Optional[List[Document]] = None):
+    def __init__(
+        self,
+        vector_store,
+        documents: Optional[List[Document]] = None,
+        k: Optional[int] = None,
+    ):
         self.vector_store = vector_store
         self.documents = documents
-        self.top_k = settings.rag.top_k
+        self.top_k = k if k is not None else settings.rag.top_k
         self.weights = settings.rag.hybrid_weights
 
         self.cache_dir = Path(settings.rag.cache_dir)

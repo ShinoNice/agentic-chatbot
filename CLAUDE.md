@@ -10,9 +10,13 @@ This file provides guidance to Claude Code when working in this repository. The 
 
 ## Current Phase
 
-**Tests + hardening.** The codebase functions end-to-end but has zero tests. Goal for the next several sessions: build a real test suite covering the agents, orchestrator, retrieval, and schemas — and fix tangled code as testing reveals it.
+**Retrieval quality (one-branch detour from "Tests + hardening").** A cross-encoder reranker (`BAAI/bge-reranker-base`) was added between hybrid retrieval and the relevance check. Measured RAGAS lift on `golden_set_v2.json`: Context Precision **+24.96 pp** (0.673 → 0.923), Context Recall **+3.33 pp**, Faithfulness **+2.92 pp**, Answer Relevancy **+1.51 pp**. Default config: `candidate_k=30, top_k=10`. The aggressive `top_k=5` config was rejected because it broke recall on comparison-style questions. See [docs/superpowers/specs/2026-04-08-reranker-design.md §13](docs/superpowers/specs/2026-04-08-reranker-design.md) for the full results and per-question analysis. Raw eval CSVs in [evaluation/results/](evaluation/results/).
 
-Permission granted to refactor existing files when writing tests exposes coupling that makes them hard to test cleanly. Refactors stay scoped to what's needed for the test in the same commit; no speculative cleanup.
+**Test suite has bootstrapped:** 10 reranker unit tests pass under `uv run pytest -q --no-header`. The `p26-test-before-commit.sh` hook's "no tests collected" grace period is over — every commit on this branch and onward must keep pytest exit 0.
+
+**Next session: tests + hardening resumes.** The reranker module is the only thing with tests. The agents, orchestrator, retrieval pipeline, and schemas are still untested.
+
+Permission granted to refactor existing files when writing tests exposes coupling that makes them hard to test cleanly. Refactors stay scoped to what's needed for the test and are staged in the same chunk you hand to the user for commit; no speculative cleanup.
 
 ## Environment
 
@@ -63,9 +67,9 @@ The exhaustive architecture overview lives in [PROJECT_SUMMARY.md](PROJECT_SUMMA
 
 - **Test layout:** `tests/` at repo root, mirroring `src/` package structure (e.g. `tests/workflow/test_orchestrator.py`). Shared fixtures in `tests/conftest.py`.
 - **Mocking:** prefer pytest fixtures + `monkeypatch` for env vars; `unittest.mock.MagicMock` / `patch` for OpenAI / Pinecone / Chroma clients. If a test would benefit from recorded responses, use `vcrpy` — but mocks first.
-- **Refactor discipline:** when a test reveals tangled code, refactor it in the **same commit** as the test that motivated it. Don't accumulate "cleanup later" debt; don't go on speculative refactor sprees.
-- **Entry points (CLI / Streamlit / Docker) may briefly break during a refactor**, but every commit must leave them green. If a refactor crosses commit boundaries, fix the entry points before committing.
-- **Commits stay focused:** one logical change per commit. Use the commit message body to explain *why*, not just *what*.
+- **Refactor discipline:** when a test reveals tangled code, stage the refactor together with the test that motivated it as a single coherent chunk for the user to commit. Don't accumulate "cleanup later" debt; don't go on speculative refactor sprees.
+- **Entry points (CLI / Streamlit / Docker) may briefly break during a refactor**, but every chunk handed to the user for commit must leave them green. If a refactor crosses chunk boundaries, fix the entry points before staging the chunk.
+- **Staged chunks stay focused:** one logical change per chunk you hand to the user. When you suggest a commit message for the user, use the message body to explain *why*, not just *what* — and never include `Co-Authored-By` trailers (kernel Section 0).
 
 ## Hook Commands
 
@@ -77,13 +81,15 @@ lint_command: uv run ruff check .
 dev_command: uvicorn src.api.app:app --reload --port 8001
 ```
 
-The `p26-test-before-commit.sh` hook explicitly treats pytest exit code 5 ("no tests collected") as allowed, so this command works even before any tests exist. Once tests are added, pytest will return 0 on success and the same command will keep working.
+The `p26-test-before-commit.sh` hook previously treated pytest exit code 5 ("no tests collected") as allowed. **As of the reranker branch, the test suite has bootstrapped (10 reranker tests) and the grace period is over** — every commit must keep `uv run pytest -q --no-header` returning exit 0.
 
 ## Open Questions / Things to Verify
 
 - **Tavily web search wiring:** `TAVILY_API_KEY` is in `.env.example` but it's not yet confirmed whether any agent or tool actually uses it. Verify before writing tests for the workflow.
-- **Project audit:** [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) section 14 ("Honest Project Audit") likely lists known issues in the existing code. Read it before planning the test strategy so we test the things that actually need testing.
-- **Integration test gate:** decide whether to add an opt-in integration test that runs the orchestrator end-to-end against local Chroma + a tiny mock LLM, vs keeping everything as pure unit tests.
+- **Project audit:** [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) section 14 ("Honest Project Audit") lists known issues. Read it before planning the test strategy. The reranker branch partially fixed §14.2's "sync I/O in async paths" by wrapping `CrossEncoder.predict()` in `asyncio.to_thread`; existing offenders (BM25 cache I/O, blocking `input()` in CLI) are still untouched.
+- **Integration test gate:** still open. The reranker branch chose unit tests only (mocking the cross-encoder via monkeypatch) for the new module. The broader question — opt-in `INTEGRATION=1` end-to-end test against local Chroma + stubbed LLM — is for the next phase.
+- **Reranker pre-warming:** the BGE model is lazy-loaded on the first query (~3-10s cold start). For local dev this is fine; in deployed contexts a `lifespan` warm-up call would smooth it. Not blocking; deferred.
+- **Wider candidate-pool sweep:** the eval sweep was reduced from 5 configs to 3 (baseline / 30→10 / 30→5). The 50→{10,5} arms were not run. If a future eval shows the chosen `candidate_k=30` is leaving precision on the table, run those.
 
 ## Mandatory Skills (inherited from Projects2026 kernel)
 
@@ -94,4 +100,4 @@ These are not optional. Invoke them **before** the situation they cover:
 - `superpowers:test-driven-development` — before writing implementation code
 - `superpowers:systematic-debugging` — for any bug or unexpected behavior
 - `superpowers:verification-before-completion` — before claiming anything done
-- `superpowers:requesting-code-review` — before merging a branch
+- `superpowers:requesting-code-review` — before telling the user a branch is ready to merge
