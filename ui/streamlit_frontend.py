@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any
 
@@ -9,7 +10,9 @@ import streamlit as st
 
 # ── Constants ─────────────────────────────────────────────────────────
 
-_DEFAULT_API_URL: str = "http://localhost:8001"
+# API_BASE_URL lets Docker Compose override the default for container-to-container
+# networking (e.g. "http://api:8001"). Local dev keeps the default.
+_DEFAULT_API_URL: str = os.getenv("API_BASE_URL", "http://localhost:8001")
 _REQUEST_TIMEOUT: float = 120.0
 _NO_MATCH: str = "NO_MATCH"
 _MSG_UNREACHABLE: str = "⚠️ Could not reach the backend."

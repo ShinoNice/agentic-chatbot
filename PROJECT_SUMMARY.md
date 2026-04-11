@@ -153,12 +153,12 @@ agentic-chatbot/
 │   └── workflow_diagram*.png           # Generated workflow diagrams
 ├── main.py                             # Root entry: starts uvicorn server
 ├── .env.example                        # Template for environment variables
-├── pyproject.toml                      # Project metadata & dependencies
-├── requirements.txt                    # Pinned dependency list
-├── Dockerfile                          # Multi-service Docker image
+├── pyproject.toml                      # Project metadata, deps, [tool.uv.sources] CPU-torch config
+├── uv.lock                             # Locked dependency graph (committed for reproducible Docker builds)
+├── .dockerignore                       # Excludes .git, data/, tests/, .venv from Docker build context
+├── Dockerfile                          # Multi-stage uv build, CPU-only torch, non-root appuser
 ├── docker-compose.yml                  # Orchestrates API + UI containers
-├── MAKEFILE                            # Development shortcuts (26 targets)
-└── uv.lock                             # UV lock file
+└── MAKEFILE                            # Development shortcuts (26 targets)
 ```
 
 ---
@@ -706,8 +706,8 @@ Processed chunks stored as JSON (~10.6 MB total):
 |-------|----------|-------|----------------|
 | **Zero tests** | High | `tests/` does not exist; `pytest` is in `dependencies` but unused | The whole self-correction loop, the dual-parser fallback, the relevance routing — none of it is regression-protected. Any refactor is a coin flip. |
 | **No CI/CD** | High | No `.github/workflows/`, no `azure-pipelines.yml` | Lint/type/test never run automatically. A broken `main` is one push away. |
-| **Dockerfile runs as root** | Medium | [Dockerfile](Dockerfile) (no `USER` directive) | Container escape -> host root. Trivial fix: add a non-root user. |
-| **Single-stage Docker build** | Medium | [Dockerfile](Dockerfile) | Image ships `build-essential`, `pip` cache, dev deps, source tree, and notebooks. Multi-stage would slim it dramatically. |
+| ~~**Dockerfile runs as root**~~ | ~~Medium~~ | ~~[Dockerfile](Dockerfile)~~ | **FIXED 2026-04-12** (claude/2026-04-11-docker-cpu-torch). Runtime stage now runs as `appuser` (system user, no login shell). |
+| ~~**Single-stage Docker build**~~ | ~~Medium~~ | ~~[Dockerfile](Dockerfile)~~ | **FIXED 2026-04-12.** Multi-stage build: builder installs deps via `uv sync --frozen`, runtime stage copies only the `.venv` + source. No `build-essential`, no dev deps, no `pip` cache in final image. Also: CPU-only torch wired via `[tool.uv.sources]` in `pyproject.toml` — dropped ~4 GB of CUDA wheels that the previous build was pulling transitively. |
 | **CORS wide open + no auth + no rate-limit** | High | [src/api/app.py](src/api/app.py), [src/api/routes.py](src/api/routes.py), `cors_origins: ["*"]` in [config/settings.yaml](config/settings.yaml) | Anyone on the network can hit `/api/chat` and burn OpenAI credits. Anyone can `/api/ingest`. This is fine for `localhost`, unsafe anywhere else. |
 | **LangSmith tracing only wired into the CLI** | Medium | Configured in `.env` but only consumed by [src/main.py](src/main.py), not by the FastAPI app | The thing you actually want to trace (production requests) is invisible. |
 | **Singleton without a lock** | Medium | `_system` global at the bottom of [src/api/dependencies.py](src/api/dependencies.py) | Two concurrent startup requests can race-initialise the pipeline twice. Unlikely under uvicorn `--workers 1`, real under multi-worker. |
@@ -716,7 +716,7 @@ Processed chunks stored as JSON (~10.6 MB total):
 | **Magic numbers scattered through agents** | Low | `_DOCLING_TIMEOUT_SECONDS = 300`, `_MAX_DOCLING_PAGES = 80`, `_MAX_CONTEXT_CHARS = 12_000` (duplicated in two agents), `_MIN_ANSWER_LENGTH = 5` | Tuning requires editing source. These should live in `settings.yaml`. |
 | **`pyproject.toml` declares tools but never configures them** | Low | [pyproject.toml](pyproject.toml) has no `[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]` | `make lint` runs Ruff with default rules; `make typecheck` runs MyPy in its loosest mode. The tools exist on paper. |
 | **Dev deps mixed with runtime deps** | Low | `mypy`, `ruff`, `pytest`, `ipykernel` all in main `[dependencies]` | The production image installs Jupyter and a type-checker. Move them to `[project.optional-dependencies].dev`. |
-| **`uv.lock` is gitignored** | Low | [.gitignore](.gitignore) line 72 | Defeats the point of a lock file. `uv.lock` should be committed for reproducible builds; only `.uv/` cache should be ignored. |
+| ~~**`uv.lock` is gitignored**~~ | ~~Low~~ | ~~[.gitignore](.gitignore) line 72~~ | **FIXED 2026-04-12.** `uv.lock` removed from `.gitignore` and committed. Docker builder stage uses `uv sync --frozen` for reproducible builds. Only `.uv/` cache dir remains ignored. |
 | **README is thin** | Low | [README.md](README.md) | Quick-start works, but no architecture, no troubleshooting, no failure modes, no production guidance. New contributors will lean entirely on this `PROJECT_SUMMARY.md`. |
 | **No request correlation IDs** | Low | [src/api/routes.py](src/api/routes.py) | When a chat request fans out across 4 LangGraph nodes and 2 retries, you cannot grep one transaction out of the JSON log. |
 | **No prompt-injection guardrails** | Low | [src/workflow/agents/researcher.py](src/workflow/agents/researcher.py), [src/workflow/agents/verifier.py](src/workflow/agents/verifier.py) | User questions and document content are concatenated into prompts without sanitisation. Low-risk for an internal tool, real risk if exposed. |
