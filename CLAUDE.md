@@ -10,11 +10,21 @@ This file provides guidance to Claude Code when working in this repository. The 
 
 ## Current Phase
 
-**Retrieval quality (one-branch detour from "Tests + hardening").** A cross-encoder reranker (`BAAI/bge-reranker-base`) was added between hybrid retrieval and the relevance check. Measured RAGAS lift on `golden_set_v2.json`: Context Precision **+24.96 pp** (0.673 → 0.923), Context Recall **+3.33 pp**, Faithfulness **+2.92 pp**, Answer Relevancy **+1.51 pp**. Default config: `candidate_k=30, top_k=10`. The aggressive `top_k=5` config was rejected because it broke recall on comparison-style questions. See [docs/superpowers/specs/2026-04-08-reranker-design.md §13](docs/superpowers/specs/2026-04-08-reranker-design.md) for the full results and per-question analysis. Raw eval CSVs in [evaluation/results/](evaluation/results/).
+**Docker + deployment prep (one-branch detour from "Tests + hardening").** The Docker image now builds cleanly end-to-end. Work completed on `claude/2026-04-11-docker-cpu-torch`:
 
-**Test suite has bootstrapped:** 10 reranker unit tests pass under `uv run pytest -q --no-header`. The `p26-test-before-commit.sh` hook's "no tests collected" grace period is over — every commit on this branch and onward must keep pytest exit 0.
+- **CPU-only PyTorch at the package-manager level** — `torch` + `torchvision` declared as direct deps in `pyproject.toml` with `[tool.uv.sources]` routing them through `https://download.pytorch.org/whl/cpu`. `uv.lock` regenerated with zero `nvidia-*` / `triton` / `cuda-*` entries. Previous build was pulling ~4 GB of CUDA wheels transitively through `docling` / `sentence-transformers`, which killed builds on machines with <10 GB free disk.
+- **Multi-stage Dockerfile** — builder stage installs deps with `uv sync --no-dev --no-install-project --frozen`, runtime stage copies only the `.venv` + source. Non-root `appuser`, no `build-essential` in final image. Closes PROJECT_SUMMARY.md §14.2 items "Dockerfile runs as root" and "Single-stage Docker build".
+- **`uv.lock` is now committed** — removed from `.gitignore`. `--frozen` in Docker needs it. Closes §14.2 item "uv.lock is gitignored".
+- **`requirements.txt` deleted** — `uv.lock` is now the single source of dependency truth. No more pip/uv drift risk.
+- **`.dockerignore` added** — prevents `.git`, `data/`, `evaluation/results/`, `tests/`, `.venv`, logs, etc. from leaking into the build context.
+- **Healthcheck fixed** — `docker-compose.yml` uses `python -c "import httpx; ..."` instead of `curl` (curl isn't in the slim runtime image). `httpx` is already a runtime dep. `start_period` bumped back to 120s for cold-start tolerance.
+- **Docker networking fix in Streamlit UI** — `ui/streamlit_frontend.py` now reads `API_BASE_URL` from env, defaulting to `http://localhost:8001`. Compose sets `API_BASE_URL=http://api:8001` on the `ui` service so container-to-container calls work via Docker's internal DNS. Host-based dev is unchanged.
 
-**Next session: tests + hardening resumes.** The reranker module is the only thing with tests. The agents, orchestrator, retrieval pipeline, and schemas are still untested.
+**Prior phase (reranker) — completed and merged.** Cross-encoder reranker (`BAAI/bge-reranker-base`) sits between hybrid retrieval and the relevance check. Measured RAGAS lift on `golden_set_v2.json`: Context Precision **+24.96 pp** (0.673 → 0.923), Context Recall **+3.33 pp**, Faithfulness **+2.92 pp**, Answer Relevancy **+1.51 pp**. Default config: `candidate_k=30, top_k=10`. Full results in [docs/superpowers/specs/2026-04-08-reranker-design.md §13](docs/superpowers/specs/2026-04-08-reranker-design.md). Raw CSVs in [evaluation/results/](evaluation/results/).
+
+**Test suite status:** 10 reranker unit tests pass under `uv run pytest -q --no-header` (confirmed green on `torch 2.11.0+cpu` after the version bump from the uv lock regeneration). The `p26-test-before-commit.sh` hook's "no tests collected" grace period is over — every commit must keep pytest exit 0.
+
+**Next session: ship to Azure.** The docker image now being buildable was the prerequisite. Azure path: push to Azure Container Registry → deploy to Azure Container Apps (2 apps: api + ui) → configure secrets (OpenAI, Pinecone) → get public HTTPS URL. See PROJECT_SUMMARY.md §15 for the planned deployment blueprint. Tests + hardening resumes after Azure is live.
 
 Permission granted to refactor existing files when writing tests exposes coupling that makes them hard to test cleanly. Refactors stay scoped to what's needed for the test and are staged in the same chunk you hand to the user for commit; no speculative cleanup.
 
@@ -85,10 +95,11 @@ The `p26-test-before-commit.sh` hook previously treated pytest exit code 5 ("no 
 
 ## Open Questions / Things to Verify
 
-- **Tavily web search wiring:** `TAVILY_API_KEY` is in `.env.example` but it's not yet confirmed whether any agent or tool actually uses it. Verify before writing tests for the workflow.
-- **Project audit:** [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) section 14 ("Honest Project Audit") lists known issues. Read it before planning the test strategy. The reranker branch partially fixed §14.2's "sync I/O in async paths" by wrapping `CrossEncoder.predict()` in `asyncio.to_thread`; existing offenders (BM25 cache I/O, blocking `input()` in CLI) are still untouched.
+- **Tavily web search wiring:** ~~Is `TAVILY_API_KEY` consumed anywhere in `src/`?~~ **Answered 2026-04-11:** No — `grep -ri tavily src/` returns zero hits. It's a dormant env var. Whether to remove it from `.env.example` or wire up a future web-search tool is still open.
+- **Project audit:** [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) section 14 ("Honest Project Audit") lists known issues. The 2026-04-11 Docker branch closed §14.2's "Dockerfile runs as root", "Single-stage Docker build", and "`uv.lock` is gitignored" items. The reranker branch partially fixed §14.2's "sync I/O in async paths" by wrapping `CrossEncoder.predict()` in `asyncio.to_thread`; existing offenders (BM25 cache I/O, blocking `input()` in CLI) are still untouched. Remaining §14.2 items are the test/CI gap and the CORS/auth/rate-limit trio.
 - **Integration test gate:** still open. The reranker branch chose unit tests only (mocking the cross-encoder via monkeypatch) for the new module. The broader question — opt-in `INTEGRATION=1` end-to-end test against local Chroma + stubbed LLM — is for the next phase.
-- **Reranker pre-warming:** the BGE model is lazy-loaded on the first query (~3-10s cold start). For local dev this is fine; in deployed contexts a `lifespan` warm-up call would smooth it. Not blocking; deferred.
+- **Azure deployment path:** PROJECT_SUMMARY.md §15 sketches Azure Container Apps (2 apps × 1 replica × 0.5 vCPU × 1 GiB ≈ $30/mo). Open details: (a) registry choice (ACR vs GHCR), (b) secret management (Key Vault vs app env vars), (c) whether to pre-bake the BGE reranker model into the image (~1 GB) or let it cold-download on first query.
+- **Reranker pre-warming:** the BGE model is lazy-loaded on the first query (~3–10s cold start). For local dev this is fine; in deployed contexts a `lifespan` warm-up call would smooth it. Especially relevant once on Azure where cold starts are visible to users.
 - **Wider candidate-pool sweep:** the eval sweep was reduced from 5 configs to 3 (baseline / 30→10 / 30→5). The 50→{10,5} arms were not run. If a future eval shows the chosen `candidate_k=30` is leaving precision on the table, run those.
 
 ## Mandatory Skills (inherited from Projects2026 kernel)
