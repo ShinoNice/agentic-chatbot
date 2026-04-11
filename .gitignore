@@ -73,8 +73,8 @@ desktop.ini
 htmlcov/
 
 # ─── uv ───────────────────────────────────────────────────────────────────────
+# uv.lock IS committed — Docker --frozen and reproducible builds depend on it.
 .uv/
-uv.lock
 
 # ─── CLAUDE FILES ────────────────────────────────────────────────────
 # Local session state (per-machine, not repo state).
