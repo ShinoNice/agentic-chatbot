@@ -61,6 +61,24 @@ class RerankSettings(BaseModel):
         return v
 
 
+class GuardrailsSettings(BaseModel):
+    enabled: bool = True
+    redaction_strategy: str = "mask"
+    scan_input: bool = True
+    scan_output: bool = True
+
+
+class AuditSettings(BaseModel):
+    enabled: bool = True
+    db_path: str = "data/audit/audit.db"
+    retention_days: int = 90
+
+
+class MCPSettings(BaseModel):
+    guardrails: GuardrailsSettings = Field(default_factory=GuardrailsSettings)
+    audit: AuditSettings = Field(default_factory=AuditSettings)
+
+
 class Settings(BaseSettings):
     """Merges .env secrets with YAML application config."""
 
@@ -73,6 +91,7 @@ class Settings(BaseSettings):
     docling: DoclingSettings = Field(default_factory=DoclingSettings)
     app: AppSettings = Field(default_factory=AppSettings)
     rerank: RerankSettings = Field(default_factory=RerankSettings)
+    mcp: MCPSettings = Field(default_factory=MCPSettings)
     prompts: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = SettingsConfigDict(
@@ -98,6 +117,7 @@ def load_all_configs() -> Settings:
     docling_data = yaml_data.get("docling_settings", {})
     app_data = yaml_data.get("app", {})
     rerank_data = yaml_data.get("rerank_settings", {})
+    mcp_data = yaml_data.get("mcp_settings", {})
 
     return Settings(
         llm=LLMSettings(**yaml_data["model_settings"]),
@@ -105,6 +125,7 @@ def load_all_configs() -> Settings:
         docling=DoclingSettings(**docling_data),
         app=AppSettings(**app_data),
         rerank=RerankSettings(**rerank_data),
+        mcp=MCPSettings(**mcp_data),
         prompts=prompts,
     )
 

@@ -41,3 +41,15 @@ rerank_settings:
   model_name: "BAAI/bge-reranker-base" # English-only, ~278 MB
   candidate_k: 30                      # wide retrieve from BM25 + dense
   top_k: 10                            # post-rerank slice into the LLM
+
+# MCP Server Configuration (Guardrails + Audit Trail)
+mcp_settings:
+  guardrails:
+    enabled: true
+    redaction_strategy: "mask"           # "mask" | "hash" | "remove"
+    scan_input: true                     # scan user queries for PII
+    scan_output: true                    # scan draft answers for PII
+  audit:
+    enabled: true
+    db_path: "data/audit/audit.db"
+    retention_days: 90                   # 0 = keep forever

@@ -1,6 +1,9 @@
-from typing import List, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+from src.schemas.agent_schemas import GuardrailsReport
 
 
 # ── Chat ──────────────────────────────────────────────────────────────
@@ -48,6 +51,7 @@ class ChatResponse(BaseModel):
     verification: Optional[VerificationDetail] = None
     sources: List[SourceDocument] = Field(default_factory=list)
     iterations: int = 0
+    guardrails: Optional[GuardrailsReport] = None
 
 
 # ── Ingestion ─────────────────────────────────────────────────────────
@@ -79,3 +83,17 @@ class HealthResponse(BaseModel):
     knowledge_base_ready: bool = False
     vector_store_type: str = "unknown"
     documents_indexed: Optional[int] = None
+
+
+# ── Audit ────────────────────────────────────────────────────────────
+
+
+class AuditEventResponse(BaseModel):
+    """Audit event as returned by the API."""
+
+    event_id: str
+    session_id: str
+    timestamp: datetime
+    event_type: str
+    node_name: str
+    details: Dict[str, Any]
