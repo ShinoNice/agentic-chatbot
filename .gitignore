@@ -29,6 +29,7 @@ data/raw/
 data/cache/
 data/processed/
 data/vector_db/
+data/audit/
 chroma_db/
 *.faiss
 *.pkl

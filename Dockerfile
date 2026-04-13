@@ -38,7 +38,7 @@ ENV PYTHONPATH=.
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-RUN mkdir -p /app/data && chown -R appuser:appgroup /app/data
+RUN mkdir -p /app/data/audit && chown -R appuser:appgroup /app/data
 
 USER appuser
 
