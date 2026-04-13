@@ -2,7 +2,11 @@ from typing import Annotated, List, Optional, TypedDict
 
 from langchain_core.documents import Document
 
-from src.schemas.agent_schemas import RelevanceStatus, VerificationReport
+from src.schemas.agent_schemas import (
+    GuardrailsReport,
+    RelevanceStatus,
+    VerificationReport,
+)
 
 
 def merge_documents(
@@ -34,3 +38,5 @@ class AgentState(TypedDict):
     verification: Optional[VerificationReport]
     iterations: int
     error: Optional[str]
+    guardrails_report: Optional[GuardrailsReport]
+    audit_session_id: str

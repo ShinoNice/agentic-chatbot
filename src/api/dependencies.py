@@ -151,7 +151,7 @@ class SystemManager:
 
     # ── Query ─────────────────────────────────────────────────────────
 
-    async def query(self, question: str) -> Dict[str, Any]:
+    async def query(self, question: str, session_id: str = "") -> Dict[str, Any]:
         """Run the full agentic RAG pipeline and return the final state.
 
         Raises ``RuntimeError`` when called before the knowledge base is
@@ -163,7 +163,7 @@ class SystemManager:
                 "Call POST /ingest or add documents first."
             )
 
-        result = await self.orchestrator.run(question)
+        result = await self.orchestrator.run(question, session_id=session_id)
         return result
 
 

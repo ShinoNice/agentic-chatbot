@@ -120,6 +120,65 @@ def _render_sources(sources: list[dict[str, Any]]) -> None:
             st.write(f"- **{key}**{page_str}")
 
 
+def _render_guardrails(guardrails: dict[str, Any]) -> None:
+    """Render PII guardrails report inside an expander."""
+    input_found = guardrails.get("input_pii_found", False)
+    output_found = guardrails.get("output_pii_found", False)
+    if not input_found and not output_found:
+        return
+
+    with st.expander("🛡️ PII Guardrails"):
+        detections = guardrails.get("detections", [])
+        pii_types: dict[str, int] = {}
+        for d in detections:
+            t = d.get("pii_type", "UNKNOWN")
+            pii_types[t] = pii_types.get(t, 0) + 1
+
+        if input_found:
+            count = guardrails.get("input_redactions", 0)
+            st.write(f"**Input query:** {count} PII detection(s) redacted")
+        if output_found:
+            count = guardrails.get("output_redactions", 0)
+            st.write(f"**Draft answer:** {count} PII detection(s) redacted")
+
+        if pii_types:
+            type_strs = [f"{count} {ptype}" for ptype, count in pii_types.items()]
+            st.write(f"**Types found:** {', '.join(type_strs)}")
+
+
+def _render_audit_trail(session_id: str) -> None:
+    """Render the audit trail for this session inside an expander."""
+    if not session_id:
+        return
+
+    with st.expander("📋 Audit Trail"):
+        resp = _call_api("GET", f"/audit/{session_id}")
+        if resp is None:
+            st.write("Could not fetch audit trail.")
+            return
+        if resp.status_code == 404:
+            st.write("No audit events recorded for this session.")
+            return
+        if resp.status_code != 200:
+            st.write(f"Error fetching audit trail: {resp.status_code}")
+            return
+
+        events = resp.json()
+        if not events:
+            st.write("No audit events recorded.")
+            return
+
+        for event in events:
+            ts = event.get("timestamp", "")
+            if "T" in ts:
+                ts = ts.split("T")[1][:8]  # HH:MM:SS
+            node = event.get("node_name", "")
+            etype = event.get("event_type", "")
+            st.write(f"`{ts}` **{node}** → {etype}")
+
+        st.caption(f"{len(events)} event(s) total")
+
+
 def _append_message(
     role: str,
     content: str,
@@ -253,10 +312,17 @@ def _handle_chat_response(resp: httpx.Response | None) -> None:
         "verification": data.get("verification"),
         "iterations": data.get("iterations", 0),
         "sources": data.get("sources", []),
+        "guardrails": data.get("guardrails"),
     }
 
     _render_message_badges(meta)
     _render_sources(data.get("sources", []))
+
+    guardrails = data.get("guardrails")
+    if guardrails:
+        _render_guardrails(guardrails)
+
+    _render_audit_trail(data.get("session_id", ""))
 
     iterations = data.get("iterations", 0)
     if iterations and iterations > 1:

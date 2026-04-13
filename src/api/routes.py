@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.api.dependencies import SystemManager, get_system
 from src.api.schemas import (
+    AuditEventResponse,
     ChatRequest,
     ChatResponse,
     HealthResponse,
@@ -93,7 +94,7 @@ async def chat(
     session_id = body.session_id or str(uuid.uuid4())
 
     try:
-        result = await system.query(body.question)
+        result = await system.query(body.question, session_id=session_id)
     except Exception as exc:
         logger.error(f"Query failed: {exc}", exc_info=True)
         raise HTTPException(
@@ -143,6 +144,9 @@ async def chat(
             )
         )
 
+    # Guardrails report
+    guardrails_report = result.get("guardrails_report")
+
     return ChatResponse(
         answer=answer,
         session_id=session_id,
@@ -150,4 +154,37 @@ async def chat(
         verification=verification_detail,
         sources=sources,
         iterations=result.get("iterations", 0),
+        guardrails=guardrails_report,
     )
+
+
+# ── Audit Trail ──────────────────────────────────────────────────────
+
+
+@router.get(
+    "/audit/{session_id}",
+    response_model=List[AuditEventResponse],
+    tags=["Audit"],
+    summary="Retrieve audit trail for a session",
+)
+async def get_audit(session_id: str):
+    from src.mcp.client import get_audit_store
+
+    store = await get_audit_store()
+    events = await store.get_trail(session_id)
+    if not events:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No audit events found for session {session_id}",
+        )
+    return [
+        AuditEventResponse(
+            event_id=e.event_id,
+            session_id=e.session_id,
+            timestamp=e.timestamp,
+            event_type=e.event_type,
+            node_name=e.node_name,
+            details=e.details,
+        )
+        for e in events
+    ]
