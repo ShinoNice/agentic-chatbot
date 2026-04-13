@@ -12,13 +12,17 @@ A multi-agent RAG (Retrieval-Augmented Generation) chatbot built with LangGraph,
                                           │
                      ┌────────────────────┼────────────────────┐
                      ▼                    ▼                    ▼
-              Vector Store           LLM (OpenAI)         Web Search
-           (Pinecone / Chroma)        GPT-4o-mini          (Tavily)
+              Vector Store           LLM (OpenAI)        MCP Servers
+           (Pinecone / Chroma)        GPT-4o-mini     (Guardrails + Audit)
 ```
 
-**Agents:** Relevance Checker → Researcher → Verifier (orchestrated via LangGraph)
+**LangGraph workflow:** Guardrails Input → Retrieve → Rerank → Relevance Check → Research → Guardrails Output → Verify
 
 **Retrieval pipeline:** Hybrid search (BM25 + dense vectors) → Cross-encoder reranker (`BAAI/bge-reranker-base`) → top-K chunks → agents.
+
+**MCP servers:** Two FastMCP servers integrated into the workflow for sensitive data handling:
+- **Guardrails** — PII detection and redaction (PT/EU + international patterns) on both input queries and output answers
+- **Audit Trail** — SQLite-backed event logging of every node transition for compliance
 
 ### Reranking
 
@@ -33,6 +37,29 @@ The chosen defaults are backed by a measured RAGAS sweep against `golden_set_v2.
 | 30 → 5 (rejected) | 0.945 (+27.2 pp) | 0.900 (−6.7 pp) | 0.968 (+1.7 pp) |
 
 The aggressive `top_k=5` config was rejected because it broke recall on comparison-style questions where the answer requires multiple chunks. Full sweep methodology, per-question delta analysis, and a discussion of the failure mode are in the [reranker design spec](docs/superpowers/specs/2026-04-08-reranker-design.md). Raw eval CSVs live under [evaluation/results/](evaluation/results/).
+
+### MCP Servers
+
+Two [Model Context Protocol](https://modelcontextprotocol.io/) servers provide sensitive-data capabilities, integrated as LangGraph nodes:
+
+**Guardrails MCP** (`src/mcp/guardrails/`) — scans and redacts PII from both user queries (before retrieval) and draft answers (before delivery). Regex-based, zero API cost, fully deterministic.
+
+Detected PII patterns:
+- **Portuguese/EU:** NIF (mod-11 validated), PT phone (+351/9xx/2xx), NISS, Cartão de Cidadão, IBAN, Código Postal
+- **International:** Email, credit card (Luhn validated), IPv4, date of birth, SSN, international phone
+
+Three redaction strategies configurable via `config/settings.yaml`:
+- `mask` (default) — `joao@test.pt` → `[REDACTED_EMAIL]`
+- `hash` — `joao@test.pt` → `[EMAIL:a3f2b8...]`
+- `remove` — deletes the matched text
+
+**Audit Trail MCP** (`src/mcp/audit/`) — logs every LangGraph node transition (query received, documents retrieved, PII detected, answer generated, verification completed, etc.) to a SQLite database at `data/audit/audit.db`. Queryable via `GET /api/audit/{session_id}`. Configurable retention (default 90 days).
+
+Both servers are built with FastMCP and can also run standalone for external MCP clients:
+```bash
+uv run python -m src.mcp.guardrails   # stdio MCP server
+uv run python -m src.mcp.audit        # stdio MCP server
+```
 
 ## Prerequisites
 
@@ -105,9 +132,10 @@ The image is a **multi-stage uv build** with CPU-only PyTorch wired at the packa
 │   ├── api/         # FastAPI app, routes, schemas
 │   ├── core/        # Config loader, logger, exceptions
 │   ├── engines/     # OpenAI client, embedding model
+│   ├── mcp/         # MCP servers (guardrails PII + audit trail)
 │   ├── retrieval/   # Document processor, hybrid search, vector store
 │   ├── schemas/     # Pydantic schemas
-│   └── workflow/    # LangGraph orchestrator, agents, tools, memory
+│   └── workflow/    # LangGraph orchestrator, agents, memory
 ├── tests/           # pytest suite (mirrors src/)
 ├── ui/              # Streamlit frontend
 ├── .env.example     # Template for required environment variables
