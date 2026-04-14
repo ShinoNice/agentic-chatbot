@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from src.api.dependencies import SystemManager, get_system
 from src.api.schemas import (
@@ -14,12 +14,71 @@ from src.api.schemas import (
     IngestRequest,
     IngestResponse,
     SourceDocument,
+    UploadResponse,
     VerificationDetail,
 )
 from src.core.logger import logger
 from src.schemas.agent_schemas import RelevanceStatus
 
+# Hard cap on per-upload size to protect the API from unbounded PDFs.
+# 20 MiB is plenty for most annual reports and technical papers.
+_MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
 router = APIRouter()
+
+
+# ── Upload ────────────────────────────────────────────────────────────
+
+
+@router.post(
+    "/upload",
+    response_model=UploadResponse,
+    tags=["Knowledge Base"],
+    summary="Upload a PDF for per-session querying",
+)
+async def upload_document(
+    file: UploadFile = File(...),
+    session_id: str = Form(...),
+    system: SystemManager = Depends(get_system),
+):
+    """Ingest a user-supplied PDF into a session-scoped Pinecone namespace.
+
+    The session's subsequent /chat calls will retrieve only from the uploaded
+    document, isolated from the default curated corpus and from other users.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are supported.",
+        )
+
+    content = await file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds {_MAX_UPLOAD_BYTES // (1024 * 1024)} MiB limit.",
+        )
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
+
+    try:
+        result = await system.upload(content, file.filename, session_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        logger.error(f"Upload failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Upload failed: {exc}",
+        )
+
+    return UploadResponse(**result)
 
 
 # ── Health ────────────────────────────────────────────────────────────

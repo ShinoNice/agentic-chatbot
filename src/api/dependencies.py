@@ -32,6 +32,12 @@ class SystemManager:
         self._files_indexed: List[str] = []
         self._total_chunks: int = 0
 
+        # Per-session orchestrators built from user-uploaded PDFs. A session
+        # only appears here after it successfully posts to /api/upload; /chat
+        # then prefers the session-scoped orchestrator over the default one.
+        self._session_searchers: Dict[str, HybridSearcher] = {}
+        self._session_orchestrators: Dict[str, RAGOrchestrator] = {}
+
     def _searcher_k(self) -> int:
         """Decide how many candidates the retriever returns.
 
@@ -149,21 +155,75 @@ class SystemManager:
             "message": "Ingestion successful.",
         }
 
+    # ── Per-session upload ────────────────────────────────────────────
+
+    async def upload(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        session_id: str,
+    ) -> Dict[str, Any]:
+        """Ingest a single uploaded PDF into a session-scoped Pinecone namespace.
+
+        Subsequent /chat calls with the same ``session_id`` will retrieve only
+        from this namespace (see ``query``), not the default curated corpus.
+        """
+        import tempfile
+
+        namespace = f"session-{session_id}"
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = Path(tmp.name)
+
+        try:
+            chunks = self.processor.process([tmp_path])
+        finally:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+        if not chunks:
+            raise ValueError(f"No content could be extracted from {filename}.")
+
+        vector_store = self.vector_manager.create_index(chunks, namespace=namespace)
+
+        searcher = HybridSearcher(vector_store, documents=chunks, k=self._searcher_k())
+        orchestrator = RAGOrchestrator(searcher)
+
+        self._session_searchers[session_id] = searcher
+        self._session_orchestrators[session_id] = orchestrator
+
+        logger.info(
+            f"SystemManager: uploaded {filename} into namespace {namespace} "
+            f"({len(chunks)} chunks)."
+        )
+
+        return {
+            "filename": filename,
+            "total_chunks": len(chunks),
+            "namespace": namespace,
+            "session_id": session_id,
+        }
+
     # ── Query ─────────────────────────────────────────────────────────
 
     async def query(self, question: str, session_id: str = "") -> Dict[str, Any]:
         """Run the full agentic RAG pipeline and return the final state.
 
-        Raises ``RuntimeError`` when called before the knowledge base is
-        loaded.
+        When ``session_id`` matches a prior upload, routes through that
+        session's orchestrator so the LLM only sees the uploaded document.
+        Otherwise falls back to the default curated-corpus orchestrator.
         """
-        if not self.is_ready:
+        orchestrator = self._session_orchestrators.get(session_id) or self.orchestrator
+
+        if orchestrator is None:
             raise RuntimeError(
-                "Knowledge base is not loaded. "
-                "Call POST /ingest or add documents first."
+                "Knowledge base is not loaded. Call POST /ingest or POST /upload first."
             )
 
-        result = await self.orchestrator.run(question, session_id=session_id)
+        result = await orchestrator.run(question, session_id=session_id)
         return result
 
 

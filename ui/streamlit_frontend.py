@@ -40,6 +40,13 @@ if "messages" not in st.session_state:
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
+# Active corpus: either the default curated PDFs or a user-uploaded file.
+if "uploaded_filename" not in st.session_state:
+    st.session_state.uploaded_filename = None
+
+if "uploaded_chunks" not in st.session_state:
+    st.session_state.uploaded_chunks = 0
+
 
 # ── API helpers ───────────────────────────────────────────────────────
 
@@ -215,10 +222,34 @@ def _render_sidebar() -> None:
 
         st.divider()
 
-        # Document ingestion
-        st.subheader("Knowledge Base")
-        if st.button("📥 Ingest Documents", use_container_width=True):
-            _handle_ingest()
+        # Upload your own PDF — scoped to this session only, isolated from
+        # other users and from the default curated corpus.
+        st.subheader("📤 Upload Your Own PDF")
+        st.caption(
+            "Drop a PDF here and the chatbot will answer questions about "
+            "*your* document instead of the default demo corpus. "
+            "Your upload stays private to this session."
+        )
+        uploaded = st.file_uploader(
+            "Choose a PDF (max 20 MB)",
+            type=["pdf"],
+            accept_multiple_files=False,
+            label_visibility="collapsed",
+        )
+        if uploaded is not None and uploaded.name != st.session_state.uploaded_filename:
+            _handle_upload(uploaded)
+
+        if st.session_state.uploaded_filename:
+            st.success(
+                f"✅ Now querying **{st.session_state.uploaded_filename}** "
+                f"({st.session_state.uploaded_chunks} chunks)"
+            )
+            if st.button("↩️ Back to default corpus", use_container_width=True):
+                st.session_state.uploaded_filename = None
+                st.session_state.uploaded_chunks = 0
+                st.session_state.session_id = str(uuid.uuid4())
+                st.session_state.messages = []
+                st.rerun()
 
         st.divider()
 
@@ -226,6 +257,8 @@ def _render_sidebar() -> None:
         if st.button("🗑️ Clear Chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.session_id = str(uuid.uuid4())
+            st.session_state.uploaded_filename = None
+            st.session_state.uploaded_chunks = 0
             st.rerun()
 
 
@@ -251,26 +284,41 @@ def _handle_health_check() -> None:
         )
 
 
-def _handle_ingest() -> None:
-    """Call ``/ingest`` and display the result."""
-    with st.spinner("Ingesting PDFs from `data/raw/` …"):
-        resp = _call_api("POST", "/ingest", json={"namespace": "default"})
+def _handle_upload(uploaded_file: Any) -> None:
+    """POST the uploaded PDF to /api/upload and pin the session to its namespace."""
+    # Rotate the session id so the new upload gets a fresh namespace and the
+    # previous conversation context doesn't leak into audit-trail lookups.
+    st.session_state.session_id = str(uuid.uuid4())
+
+    with st.spinner(f"Processing {uploaded_file.name} …"):
+        resp = _call_api(
+            "POST",
+            "/upload",
+            files={
+                "file": (
+                    uploaded_file.name,
+                    uploaded_file.getvalue(),
+                    "application/pdf",
+                ),
+            },
+            data={"session_id": st.session_state.session_id},
+        )
+
     if resp is None:
         return
     if resp.status_code != 200:
-        detail = resp.json().get("detail", resp.text)
-        st.error(f"Ingestion failed: {detail}")
+        try:
+            detail = resp.json().get("detail", resp.text)
+        except Exception:
+            detail = resp.text
+        st.error(f"Upload failed: {detail}")
         return
 
     data = resp.json()
-    files = data.get("files_processed", [])
-    st.success(
-        f"✅ Ingested **{len(files)}** file(s) → **{data['total_chunks']}** chunks."
-    )
-    if files:
-        with st.expander("Files processed"):
-            for name in files:
-                st.write(f"- {name}")
+    st.session_state.uploaded_filename = data["filename"]
+    st.session_state.uploaded_chunks = data["total_chunks"]
+    st.session_state.messages = []  # fresh chat for the new doc
+    st.rerun()
 
 
 # ── Chat area ─────────────────────────────────────────────────────────
@@ -352,6 +400,19 @@ def main() -> None:
         "The system retrieves relevant chunks, drafts an answer, and "
         "verifies it for accuracy."
     )
+
+    if st.session_state.uploaded_filename:
+        st.info(
+            f"📄 **Querying your uploaded document:** "
+            f"`{st.session_state.uploaded_filename}`"
+        )
+    else:
+        st.info(
+            "📚 **Querying the default corpus:** DeepSeek Technical Report, "
+            "NVIDIA Annual Report 2025, Google Environmental Report 2024, "
+            "Impact Report 2025, NASDAQ NVDA 2024, OpenAI Nonprofit Commission. "
+            "Upload your own PDF in the sidebar to query something else."
+        )
 
     _render_chat_history()
 

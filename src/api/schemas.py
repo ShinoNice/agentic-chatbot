@@ -75,6 +75,15 @@ class IngestResponse(BaseModel):
     message: str = ""
 
 
+class UploadResponse(BaseModel):
+    """Summary returned after a user uploads a single PDF for per-session querying."""
+
+    filename: str
+    total_chunks: int
+    namespace: str
+    session_id: str
+
+
 # ── Health ────────────────────────────────────────────────────────────
 
 
