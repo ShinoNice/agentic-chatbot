@@ -21,7 +21,8 @@ RUN uv sync --no-dev --no-install-project --frozen
 # Slim image with only the venv + source. No compiler, no dev deps.
 FROM python:3.12-slim
 
-RUN groupadd --system appgroup && useradd --system --gid appgroup appuser
+RUN groupadd --system appgroup \
+    && useradd --system --gid appgroup --create-home --home-dir /home/appuser appuser
 
 WORKDIR /app
 
