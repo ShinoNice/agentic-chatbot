@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 from src.schemas.agent_schemas import PIIDetection
 
@@ -20,8 +19,8 @@ class PIIPattern:
     name: str
     regex: re.Pattern[str]
     confidence: float = 1.0
-    keyword_gate: Optional[List[str]] = field(default=None)
-    validator: Optional[str] = None  # name of validation function
+    keyword_gate: list[str] | None = field(default=None)
+    validator: str | None = None  # name of validation function
 
 
 # ── Validation helpers ───────────────────────────────────────────────
@@ -92,9 +91,7 @@ _CODIGO_POSTAL_RE = re.compile(r"(?<!\d)\d{4}-\d{3}(?!\d)")
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 
 # Credit card: 13-19 digits with optional separators
-_CREDIT_CARD_RE = re.compile(
-    r"(?<!\d)(\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{1,7})(?!\d)"
-)
+_CREDIT_CARD_RE = re.compile(r"(?<!\d)(\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{1,7})(?!\d)")
 
 # IPv4 address
 _IP_RE = re.compile(r"(?<!\d)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?!\d)")
@@ -130,7 +127,7 @@ _NISS_KEYWORDS = [
 
 # ── All patterns ────────────────────────────────────────────────────
 
-PII_PATTERNS: List[PIIPattern] = [
+PII_PATTERNS: list[PIIPattern] = [
     PIIPattern(name="NIF", regex=_NIF_RE, validator="nif"),
     PIIPattern(name="PHONE_PT", regex=_PHONE_PT_RE),
     PIIPattern(name="NISS", regex=_NISS_RE, keyword_gate=_NISS_KEYWORDS),
@@ -156,19 +153,19 @@ _VALIDATORS = {
 # ── Public API ──────────────────────────────────────────────────────
 
 
-def _has_keyword(text: str, keywords: List[str], match_start: int) -> bool:
+def _has_keyword(text: str, keywords: list[str], match_start: int) -> bool:
     """Check if any keyword appears within 80 chars before the match."""
     window_start = max(0, match_start - 80)
     window = text[window_start:match_start].lower()
     return any(kw in window for kw in keywords)
 
 
-def _resolve_overlaps(detections: List[PIIDetection]) -> List[PIIDetection]:
+def _resolve_overlaps(detections: list[PIIDetection]) -> list[PIIDetection]:
     """Remove overlapping detections, keeping the longer/more-specific match."""
     if not detections:
         return []
     sorted_dets = sorted(detections, key=lambda d: (d.start, -(d.end - d.start)))
-    result: List[PIIDetection] = [sorted_dets[0]]
+    result: list[PIIDetection] = [sorted_dets[0]]
     for det in sorted_dets[1:]:
         prev = result[-1]
         if det.start < prev.end:
@@ -180,7 +177,7 @@ def _resolve_overlaps(detections: List[PIIDetection]) -> List[PIIDetection]:
     return result
 
 
-def scan_text(text: str) -> List[PIIDetection]:
+def scan_text(text: str) -> list[PIIDetection]:
     """Scan text for all known PII patterns.
 
     Returns a list of PIIDetection objects sorted by start offset,
@@ -189,7 +186,7 @@ def scan_text(text: str) -> List[PIIDetection]:
     if not text:
         return []
 
-    detections: List[PIIDetection] = []
+    detections: list[PIIDetection] = []
 
     for pattern in PII_PATTERNS:
         for match in pattern.regex.finditer(text):

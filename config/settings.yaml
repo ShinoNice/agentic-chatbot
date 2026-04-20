@@ -20,15 +20,36 @@ rag_settings:
 docling_settings:
   do_ocr: false
   force_full_page_ocr: false
-  images_scale: 1.0     
-  min_chunks_fallback: 5  
+  images_scale: 1.0
+  min_chunks_fallback: 5
+  # Docling runs in a thread-pool with this hard timeout to guard against hangs
+  # on image-heavy pages. Fallback to PyMuPDF kicks in on timeout or failure.
+  timeout_seconds: 300
+  # PDFs larger than this page count skip Docling and go straight to PyMuPDF.
+  max_pages: 80
+
+# Agent prompt-context limits (LLM input bounds)
+agent_settings:
+  # Hard cap on characters of retrieved context passed into the verifier /
+  # relevance-checker prompts. 12k ≈ ~3k tokens — safe under 4o-mini's window.
+  max_verifier_context_chars: 12000
+
+# Upload endpoint limits
+upload_settings:
+  # Hard cap on per-upload PDF size in MiB. 20 is plenty for typical
+  # annual reports and technical papers; raising it risks request timeouts.
+  max_size_mib: 20
 
 # Application Settings
 app:
   debug_mode: true
   max_iterations: 3
+  # Lock CORS to known origins. The Azure UI FQDN is the deployed Streamlit
+  # frontend; localhost entries are for host dev (Streamlit + Docker Compose).
   cors_origins:
-    - "*"
+    - "https://ca-chatbot-ui.blacktree-3305419b.northeurope.azurecontainerapps.io"
+    - "http://localhost:8501"
+    - "http://localhost:8001"
 
 # Reranker Configuration (cross-encoder, lifts Context Precision)
 # Sweep on golden_set_v2 picked candidate_k=30, top_k=10 as the default:

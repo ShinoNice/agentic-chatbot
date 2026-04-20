@@ -1,11 +1,11 @@
 from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class RelevanceStatus(str, Enum):
+class RelevanceStatus(StrEnum):
     CAN_ANSWER = "CAN_ANSWER"
     PARTIAL = "PARTIAL"
     NO_MATCH = "NO_MATCH"
@@ -28,18 +28,18 @@ class VerificationReport(BaseModel):
     supported: bool = Field(
         description="True if the answer is fully supported by the context.",
     )
-    unsupported_claims: List[str] = Field(
+    unsupported_claims: list[str] = Field(
         default_factory=list,
         description="Claims in the answer with no evidence in the context.",
     )
-    contradictions: List[str] = Field(
+    contradictions: list[str] = Field(
         default_factory=list,
         description="Statements that directly conflict with the context.",
     )
     relevant: bool = Field(
         description="True if the answer addresses the user's question.",
     )
-    additional_details: Optional[str] = Field(
+    additional_details: str | None = Field(
         default=None,
         description="Extra nuance or context found during the audit.",
     )
@@ -74,7 +74,7 @@ class PIIScanResult(BaseModel):
     """Result of scanning text for PII patterns."""
 
     has_pii: bool = Field(description="Whether any PII was detected.")
-    detections: List[PIIDetection] = Field(default_factory=list)
+    detections: list[PIIDetection] = Field(default_factory=list)
     scanned_length: int = Field(description="Length of the scanned text.")
 
 
@@ -94,7 +94,7 @@ class GuardrailsReport(BaseModel):
     input_redactions: int = 0
     output_pii_found: bool = False
     output_redactions: int = 0
-    detections: List[PIIDetection] = Field(default_factory=list)
+    detections: list[PIIDetection] = Field(default_factory=list)
 
 
 # ── MCP Audit Trail Schemas ─────────────────────────────────────────
@@ -110,7 +110,7 @@ class AuditEvent(BaseModel):
         description="Event category (e.g. query_received, pii_detected).",
     )
     node_name: str = Field(description="LangGraph node that produced this event.")
-    details: Dict[str, Any] = Field(
+    details: dict[str, Any] = Field(
         default_factory=dict,
         description="Event-specific payload.",
     )

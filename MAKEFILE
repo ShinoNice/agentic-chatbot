@@ -1,9 +1,9 @@
-.PHONY: install api ui chat ingest eval lint format typecheck test docker-up docker-down clean
+.PHONY: install api ui chat ingest eval lint format typecheck test cov docker-up docker-down clean
 
 # ── Environment ───────────────────────────────────────────────────────
 
 install:
-	pip install -r requirements.txt
+	uv sync --frozen
 
 # ── Run Services ──────────────────────────────────────────────────────
 
@@ -36,7 +36,10 @@ typecheck:
 	mypy src/
 
 test:
-	pytest
+	uv run pytest -q --no-header
+
+cov:
+	uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=60
 
 # ── Docker ────────────────────────────────────────────────────────────
 

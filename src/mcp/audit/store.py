@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import aiosqlite
 
@@ -29,12 +29,8 @@ CREATE TABLE IF NOT EXISTS audit_events (
 )
 """
 
-_CREATE_IDX_SESSION = (
-    "CREATE INDEX IF NOT EXISTS idx_session_id ON audit_events(session_id)"
-)
-_CREATE_IDX_TYPE = (
-    "CREATE INDEX IF NOT EXISTS idx_event_type ON audit_events(event_type)"
-)
+_CREATE_IDX_SESSION = "CREATE INDEX IF NOT EXISTS idx_session_id ON audit_events(session_id)"
+_CREATE_IDX_TYPE = "CREATE INDEX IF NOT EXISTS idx_event_type ON audit_events(event_type)"
 
 _INSERT = """
 INSERT INTO audit_events (event_id, session_id, timestamp, event_type, node_name, details)
@@ -73,11 +69,11 @@ class AuditStore:
         session_id: str,
         event_type: str,
         node_name: str,
-        details: Dict[str, Any],
+        details: dict[str, Any],
     ) -> str:
         """Log a single audit event. Returns the generated event_id."""
         event_id = str(uuid.uuid4())
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 _INSERT,
@@ -93,7 +89,7 @@ class AuditStore:
             await db.commit()
         return event_id
 
-    async def get_trail(self, session_id: str) -> List[AuditEvent]:
+    async def get_trail(self, session_id: str) -> list[AuditEvent]:
         """Retrieve all events for a session, ordered by timestamp."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(_SELECT_BY_SESSION, (session_id,))
@@ -129,9 +125,7 @@ class AuditStore:
             e.details.get("count", 0) for e in events if e.event_type == "pii_detected"
         )
         pii_redactions = sum(
-            e.details.get("redactions", 0)
-            for e in events
-            if e.event_type == "pii_redacted"
+            e.details.get("redactions", 0) for e in events if e.event_type == "pii_redacted"
         )
 
         first_ts = events[0].timestamp
@@ -141,9 +135,7 @@ class AuditStore:
         # Final status from the last answer_delivered event, or "unknown"
         delivered = [e for e in events if e.event_type == "answer_delivered"]
         final_status = (
-            delivered[-1].details.get("final_status", "unknown")
-            if delivered
-            else "unknown"
+            delivered[-1].details.get("final_status", "unknown") if delivered else "unknown"
         )
 
         return AuditSummary(
@@ -160,9 +152,7 @@ class AuditStore:
         """Delete events older than retention_days. Returns count deleted."""
         if retention_days <= 0:
             return 0
-        cutoff = (
-            datetime.now(timezone.utc) - timedelta(days=retention_days)
-        ).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(_DELETE_OLD, (cutoff,))
             deleted = cursor.rowcount

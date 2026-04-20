@@ -52,11 +52,7 @@ def compare(baseline_path: Path, reranked_path: Path) -> pd.DataFrame:
         if b_col in merged.columns and r_col in merged.columns:
             merged[f"{metric}_delta"] = merged[r_col] - merged[b_col]
 
-    sort_col = (
-        "context_precision_delta"
-        if "context_precision_delta" in merged.columns
-        else None
-    )
+    sort_col = "context_precision_delta" if "context_precision_delta" in merged.columns else None
     if sort_col:
         merged = merged.sort_values(sort_col, ascending=False)
 

@@ -9,7 +9,6 @@ than failing the request.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -24,9 +23,9 @@ class BaseReranker(ABC):
     def rerank(
         self,
         query: str,
-        documents: List[Document],
+        documents: list[Document],
         top_k: int,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Return at most top_k documents ordered by relevance to query."""
 
 
@@ -47,9 +46,7 @@ class BGEReranker(BaseReranker):
         if self._model is not None:
             return
         if self._load_failed:
-            raise RerankerError(
-                f"Reranker model {self.model_name} previously failed to load."
-            )
+            raise RerankerError(f"Reranker model {self.model_name} previously failed to load.")
         try:
             # Deferred import — DO NOT HOIST to module level. Two reasons:
             # (1) keeps torch/transformers off the import path entirely when
@@ -65,16 +62,14 @@ class BGEReranker(BaseReranker):
             self._model = CrossEncoder(self.model_name)
         except Exception as e:
             self._load_failed = True
-            raise RerankerError(
-                f"Failed to load cross-encoder {self.model_name}: {e}"
-            ) from e
+            raise RerankerError(f"Failed to load cross-encoder {self.model_name}: {e}") from e
 
     def rerank(
         self,
         query: str,
-        documents: List[Document],
+        documents: list[Document],
         top_k: int,
-    ) -> List[Document]:
+    ) -> list[Document]:
         if not documents or top_k <= 0:
             return []
 

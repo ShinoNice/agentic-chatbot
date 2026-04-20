@@ -33,9 +33,7 @@ def _patch_cross_encoder(monkeypatch, fake_cls, **fake_kwargs):
 
 def test_rerank_orders_by_score(monkeypatch, fake_cross_encoder, sample_documents):
     # Score doc[2] highest, doc[0] second, doc[3] third, doc[1] lowest.
-    holder = _patch_cross_encoder(
-        monkeypatch, fake_cross_encoder, scores=[5.0, 1.0, 9.0, 3.0]
-    )
+    holder = _patch_cross_encoder(monkeypatch, fake_cross_encoder, scores=[5.0, 1.0, 9.0, 3.0])
 
     reranker = BGEReranker("BAAI/bge-reranker-base")
     result = reranker.rerank("any query", sample_documents, top_k=4)
@@ -87,9 +85,7 @@ def test_rerank_empty_input_returns_empty(monkeypatch, fake_cross_encoder):
     assert "instance" not in holder
 
 
-def test_rerank_top_k_zero_returns_empty(
-    monkeypatch, fake_cross_encoder, sample_documents
-):
+def test_rerank_top_k_zero_returns_empty(monkeypatch, fake_cross_encoder, sample_documents):
     holder = _patch_cross_encoder(monkeypatch, fake_cross_encoder)
 
     reranker = BGEReranker("BAAI/bge-reranker-base")
@@ -151,9 +147,7 @@ def test_load_failure_is_sticky(monkeypatch, fake_cross_encoder):
     assert init_calls["count"] == 1
 
 
-def test_predict_failure_raises_reranker_error(
-    monkeypatch, fake_cross_encoder, sample_documents
-):
+def test_predict_failure_raises_reranker_error(monkeypatch, fake_cross_encoder, sample_documents):
     holder = _patch_cross_encoder(monkeypatch, fake_cross_encoder)
 
     reranker = BGEReranker("BAAI/bge-reranker-base")
@@ -169,9 +163,7 @@ def test_predict_failure_raises_reranker_error(
         reranker.rerank("query", sample_documents, top_k=2)
 
 
-def test_predict_failure_is_not_sticky(
-    monkeypatch, fake_cross_encoder, sample_documents
-):
+def test_predict_failure_is_not_sticky(monkeypatch, fake_cross_encoder, sample_documents):
     holder = _patch_cross_encoder(monkeypatch, fake_cross_encoder)
 
     reranker = BGEReranker("BAAI/bge-reranker-base")

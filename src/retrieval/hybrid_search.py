@@ -1,6 +1,8 @@
+from __future__ import annotations
+
+import asyncio
 import json
 from pathlib import Path
-from typing import List, Optional
 
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
@@ -16,8 +18,8 @@ class HybridSearcher:
     def __init__(
         self,
         vector_store,
-        documents: Optional[List[Document]] = None,
-        k: Optional[int] = None,
+        documents: list[Document] | None = None,
+        k: int | None = None,
     ):
         self.vector_store = vector_store
         self.documents = documents
@@ -27,8 +29,20 @@ class HybridSearcher:
         self.cache_dir = Path(settings.rag.cache_dir)
         self.bm25_path = self.cache_dir / "bm25_documents.json"
 
+        # Cache the built retriever so repeated queries reuse the in-memory BM25
+        # index (which itself isn't cheap to rebuild from the cached docs JSON).
+        self._retriever = None
+
     def get_retriever(self):
-        """Create and return the hybrid ensemble retriever, or vector-only fallback."""
+        """Return the hybrid ensemble retriever, or a vector-only fallback.
+
+        Synchronous. Safe to call from sync contexts; from async contexts prefer
+        :meth:`aget_retriever` so the first-build file I/O does not block the
+        event loop.
+        """
+        if self._retriever is not None:
+            return self._retriever
+
         vector_retriever = self.vector_store.as_retriever(
             search_kwargs={"k": self.top_k},
         )
@@ -40,27 +54,36 @@ class HybridSearcher:
                 "BM25 index unavailable (no documents and no cache). "
                 "Falling back to vector-only retrieval."
             )
-            return vector_retriever
+            self._retriever = vector_retriever
+            return self._retriever
 
-        logger.info(
-            f"Initializing Hybrid Search (Weights: {self.weights}, k: {self.top_k})"
-        )
+        logger.info(f"Initializing Hybrid Search (Weights: {self.weights}, k: {self.top_k})")
 
-        return EnsembleRetriever(
+        self._retriever = EnsembleRetriever(
             retrievers=[bm25_retriever, vector_retriever],
             weights=self.weights,
         )
+        return self._retriever
+
+    async def aget_retriever(self):
+        """Async variant — offloads the first-build sync file I/O to a worker thread.
+
+        Callers in async code (LangGraph nodes, FastAPI routes) should use this
+        so BM25 cache reads and JSON parsing do not block the event loop.
+        """
+        if self._retriever is not None:
+            return self._retriever
+        return await asyncio.to_thread(self.get_retriever)
 
     def _get_or_create_bm25(self) -> BM25Retriever:
         """Load BM25 documents from cache and rebuild, or build and persist a new index."""
         if self.bm25_path.exists():
             try:
                 logger.info("Loading BM25 documents from cache.")
-                with open(self.bm25_path, "r", encoding="utf-8") as f:
+                with open(self.bm25_path, encoding="utf-8") as f:
                     data = json.load(f)
                 docs = [
-                    Document(page_content=d["page_content"], metadata=d["metadata"])
-                    for d in data
+                    Document(page_content=d["page_content"], metadata=d["metadata"]) for d in data
                 ]
                 retriever = BM25Retriever.from_documents(docs)
                 retriever.k = self.top_k
@@ -77,9 +100,9 @@ class HybridSearcher:
 
         try:
             data = [
-                {"page_content": d.page_content, "metadata": d.metadata}
-                for d in self.documents
+                {"page_content": d.page_content, "metadata": d.metadata} for d in self.documents
             ]
+            self.bm25_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.bm25_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, default=str)
         except Exception as e:

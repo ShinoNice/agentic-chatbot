@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from langchain_openai import OpenAIEmbeddings
 
@@ -19,7 +19,7 @@ class BaseEmbeddingModel(ABC):
 class OpenAIEmbeddingModel(BaseEmbeddingModel):
     """OpenAI implementation for text embeddings."""
 
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(self, model_name: str | None = None):
         self.model_name = model_name or settings.llm.embedding_model
         logger.info(f"Initializing OpenAI Embeddings with model: {self.model_name}")
 

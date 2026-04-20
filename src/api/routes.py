@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from typing import List
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
 from src.api.dependencies import SystemManager, get_system
 from src.api.schemas import (
@@ -13,16 +12,15 @@ from src.api.schemas import (
     HealthResponse,
     IngestRequest,
     IngestResponse,
+    LivenessResponse,
+    ReadinessResponse,
     SourceDocument,
     UploadResponse,
     VerificationDetail,
 )
+from src.core.config_loader import settings
 from src.core.logger import logger
 from src.schemas.agent_schemas import RelevanceStatus
-
-# Hard cap on per-upload size to protect the API from unbounded PDFs.
-# 20 MiB is plenty for most annual reports and technical papers.
-_MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 router = APIRouter()
 
@@ -53,10 +51,10 @@ async def upload_document(
         )
 
     content = await file.read()
-    if len(content) > _MAX_UPLOAD_BYTES:
+    if len(content) > settings.upload.max_size_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File exceeds {_MAX_UPLOAD_BYTES // (1024 * 1024)} MiB limit.",
+            detail=f"File exceeds {settings.upload.max_size_mib} MiB limit.",
         )
     if not content:
         raise HTTPException(
@@ -85,10 +83,55 @@ async def upload_document(
 
 
 @router.get(
+    "/healthz",
+    response_model=LivenessResponse,
+    tags=["System"],
+    summary="Liveness probe — is the process alive?",
+)
+async def liveness():
+    """Cheap, dependency-free probe. Returns 200 whenever the event loop
+    is responsive. Do NOT wire this to traffic gating — use ``/readyz``."""
+    return LivenessResponse(status="ok")
+
+
+@router.get(
+    "/readyz",
+    response_model=ReadinessResponse,
+    tags=["System"],
+    summary="Readiness probe — can this replica serve /chat?",
+)
+async def readiness(
+    response: Response,
+    system: SystemManager = Depends(get_system),
+):
+    """Readiness probe. Returns 503 until the knowledge base is wired up.
+
+    This is the right target for ingress / Container Apps traffic probes —
+    a 503 here keeps a starting-up replica out of rotation instead of
+    routing user queries to a service that cannot answer them yet.
+    """
+    if not system.is_ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return ReadinessResponse(
+            status="not_ready",
+            knowledge_base_ready=False,
+            vector_store_type=system.vector_store_type,
+            documents_indexed=None,
+        )
+    return ReadinessResponse(
+        status="ok",
+        knowledge_base_ready=True,
+        vector_store_type=system.vector_store_type,
+        documents_indexed=system.documents_indexed or None,
+    )
+
+
+@router.get(
     "/health",
     response_model=HealthResponse,
     tags=["System"],
-    summary="Health / readiness check",
+    summary="Legacy combined health probe (prefer /healthz or /readyz)",
+    deprecated=True,
 )
 async def health(system: SystemManager = Depends(get_system)):
     return HealthResponse(
@@ -143,7 +186,6 @@ async def chat(
     body: ChatRequest,
     system: SystemManager = Depends(get_system),
 ):
-    # Guard – knowledge base must be loaded first
     if not system.is_ready:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -158,15 +200,11 @@ async def chat(
         logger.error(f"Query failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while processing the question: {exc}",
+            detail="An error occurred while processing the question.",
         )
 
-    # ── Map internal AgentState → API response ────────────────────────
-
-    # Answer
     answer = result.get("draft_answer") or "I couldn't generate an answer."
 
-    # Relevance
     rel_status = result.get("relevance_status")
     if isinstance(rel_status, RelevanceStatus):
         relevance_str = rel_status.value
@@ -175,11 +213,9 @@ async def chat(
 
     if relevance_str == RelevanceStatus.NO_MATCH.value:
         answer = (
-            "I couldn't find relevant information in the knowledge base "
-            "to answer your question."
+            "I couldn't find relevant information in the knowledge base to answer your question."
         )
 
-    # Verification
     verification_detail = None
     verification = result.get("verification")
     if verification is not None:
@@ -191,8 +227,7 @@ async def chat(
             additional_details=verification.additional_details,
         )
 
-    # Source documents (lightweight references)
-    sources: List[SourceDocument] = []
+    sources: list[SourceDocument] = []
     for doc in result.get("documents", []):
         meta = doc.metadata if hasattr(doc, "metadata") else {}
         sources.append(
@@ -203,7 +238,6 @@ async def chat(
             )
         )
 
-    # Guardrails report
     guardrails_report = result.get("guardrails_report")
 
     return ChatResponse(
@@ -222,7 +256,7 @@ async def chat(
 
 @router.get(
     "/audit/{session_id}",
-    response_model=List[AuditEventResponse],
+    response_model=list[AuditEventResponse],
     tags=["Audit"],
     summary="Retrieve audit trail for a session",
 )

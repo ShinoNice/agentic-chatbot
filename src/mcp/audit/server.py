@@ -6,7 +6,7 @@ run standalone via ``python -m src.mcp.audit``.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -39,7 +39,7 @@ async def log_event(
     session_id: str,
     event_type: str,
     node_name: str,
-    details: Dict[str, Any],
+    details: dict[str, Any],
 ) -> str:
     """Log a single audit event. Returns the event ID."""
     store = await get_store()
@@ -47,7 +47,7 @@ async def log_event(
 
 
 @mcp_server.tool()
-async def get_audit_trail(session_id: str) -> List[dict]:
+async def get_audit_trail(session_id: str) -> list[dict]:
     """Retrieve all events for a session, ordered by timestamp."""
     store = await get_store()
     events = await store.get_trail(session_id)

@@ -17,7 +17,6 @@ from langchain_core.documents import Document
 from src.mcp.audit.store import AuditStore
 from src.mcp.client import _reset_audit_store
 
-
 # ── Fixtures ────────────────────────────────────────────────────────
 
 
@@ -74,7 +73,7 @@ class TestGuardrailsInput:
         assert len(detections) > 0, "Test setup: question should contain PII"
 
         # Use the client functions directly (no full orchestrator needed)
-        from src.mcp.client import guardrails_scan, guardrails_redact
+        from src.mcp.client import guardrails_redact, guardrails_scan
 
         scan_result = asyncio.run(guardrails_scan(question))
         assert scan_result.has_pii is True
@@ -142,14 +141,10 @@ class TestAuditLogging:
     def test_audit_events_logged(self, audit_store):
         """Verify events can be logged and retrieved."""
         asyncio.run(
-            audit_store.log_event(
-                "test-sess", "query_received", "guardrails_input", {"q": "test"}
-            )
+            audit_store.log_event("test-sess", "query_received", "guardrails_input", {"q": "test"})
         )
         asyncio.run(
-            audit_store.log_event(
-                "test-sess", "documents_retrieved", "retrieve", {"count": 5}
-            )
+            audit_store.log_event("test-sess", "documents_retrieved", "retrieve", {"count": 5})
         )
         asyncio.run(
             audit_store.log_event(
@@ -185,12 +180,8 @@ class TestAuditEndpoint:
     def test_audit_endpoint_returns_events(self, audit_store, monkeypatch):
         """GET /api/audit/{session_id} returns logged events."""
         # Log some events
-        asyncio.run(
-            audit_store.log_event("api-test", "query_received", "guardrails_input", {})
-        )
-        asyncio.run(
-            audit_store.log_event("api-test", "answer_delivered", "orchestrator", {})
-        )
+        asyncio.run(audit_store.log_event("api-test", "query_received", "guardrails_input", {}))
+        asyncio.run(audit_store.log_event("api-test", "answer_delivered", "orchestrator", {}))
 
         # Monkeypatch the client to return our test store
         monkeypatch.setattr("src.mcp.client._audit_store", audit_store)

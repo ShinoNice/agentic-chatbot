@@ -1,6 +1,5 @@
 import json
 import time
-from typing import List, Union
 
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
@@ -41,9 +40,9 @@ class VectorStoreManager:
 
     def create_index(
         self,
-        documents: List[Document],
+        documents: list[Document],
         namespace: str = "default",
-    ) -> Union[PineconeVectorStore, Chroma]:
+    ) -> PineconeVectorStore | Chroma:
         """Clean metadata, then upsert documents into the configured store."""
         for doc in documents:
             doc.metadata = self._clean_metadata(doc.metadata)
@@ -54,7 +53,7 @@ class VectorStoreManager:
 
     def _setup_pinecone(
         self,
-        documents: List[Document],
+        documents: list[Document],
         namespace: str,
     ) -> PineconeVectorStore:
         """Create a Pinecone Serverless index (if needed) and upsert documents."""
@@ -90,7 +89,7 @@ class VectorStoreManager:
             logger.error(f"Pinecone setup failed: {e}")
             raise VectorStoreConnectionError("Could not connect to Pinecone cloud.")
 
-    def _setup_chroma(self, documents: List[Document]) -> Chroma:
+    def _setup_chroma(self, documents: list[Document]) -> Chroma:
         """Persist documents into a local ChromaDB instance."""
         try:
             logger.info(f"Initializing local ChromaDB at {self.persist_directory}")
@@ -104,14 +103,12 @@ class VectorStoreManager:
             )
         except Exception as e:
             logger.error(f"Chroma setup failed: {e}")
-            raise VectorStoreConnectionError(
-                f"Local ChromaDB initialization failed: {e}"
-            )
+            raise VectorStoreConnectionError(f"Local ChromaDB initialization failed: {e}")
 
     def get_vector_store(
         self,
         namespace: str = "default",
-    ) -> Union[PineconeVectorStore, Chroma]:
+    ) -> PineconeVectorStore | Chroma:
         """Return an existing connection to the vector store without re-indexing."""
         if self.pc_api_key and self.index_name:
             return PineconeVectorStore(
