@@ -1,0 +1,93 @@
+name: Nightly RAGAS eval
+
+# Runs a small subset of the RAGAS golden set against the deployed API
+# (or a local stack, depending on scope) so answer-quality regressions
+# surface within 24h instead of the next time someone manually triggers eval.
+#
+# Opt-in: this workflow doesn't run on PRs. It hits the real OpenAI API
+# and the live Pinecone index, so it costs real money per run. Keep the
+# sample size small and the schedule sparse.
+#
+# Preconditions:
+#   - Repo secrets: OPENAI_API_KEY, PINECONE_API_KEY
+#   - Repo var:      EVAL_SAMPLE_SIZE (default 10)
+
+on:
+  schedule:
+    # 06:00 UTC daily. Cheap: 10 samples × 2 LLM roundtrips ≈ pennies.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      sampleSize:
+        description: 'Number of golden-set questions to evaluate'
+        required: false
+        default: '10'
+
+permissions:
+  contents: read
+  issues: write # so we can open a regression issue on a drop
+
+jobs:
+  ragas:
+    name: RAGAS smoke eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      PYTHONPATH: .
+      EVAL_SAMPLE_SIZE: ${{ inputs.sampleSize || vars.EVAL_SAMPLE_SIZE || '10' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run eval pipeline
+        run: |
+          uv run python evaluation/eval_pipeline.py --max-samples ${{ env.EVAL_SAMPLE_SIZE }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragas-results-${{ github.run_number }}
+          path: evaluation/results/
+          if-no-files-found: warn
+
+      - name: Check for faithfulness regression
+        # Fails the job (and the scheduled run) if faithfulness drops below 0.7.
+        # Tuning the threshold: current baseline is ~0.95; 0.7 is a generous
+        # floor that catches genuine regressions without false alarms from
+        # question-specific noise at n=10.
+        run: |
+          uv run python - <<'PY'
+          import csv, glob, os, sys
+
+          csvs = sorted(glob.glob("evaluation/results/*.csv"))
+          if not csvs:
+              print("No results CSV found; skipping check.")
+              sys.exit(0)
+          latest = csvs[-1]
+          with open(latest) as f:
+              rows = list(csv.DictReader(f))
+          if not rows:
+              print(f"{latest} is empty; skipping check.")
+              sys.exit(0)
+          faithfulness = [float(r["faithfulness"]) for r in rows if r.get("faithfulness")]
+          avg = sum(faithfulness) / len(faithfulness)
+          print(f"Average faithfulness on {len(faithfulness)} samples: {avg:.3f}")
+          if avg < 0.7:
+              print("::error ::Faithfulness regression — average dropped below 0.7")
+              sys.exit(1)
+          PY

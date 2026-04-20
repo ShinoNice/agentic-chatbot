@@ -6,8 +6,6 @@ from src.core.logger import logger
 from src.engines.base import BaseLLM
 from src.schemas.agent_schemas import RelevanceResponse, RelevanceStatus
 
-_MAX_CONTEXT_CHARS = 12_000
-
 
 class RelevanceCheckerAgent:
     """Agent that audits retrieved documents for relevance before answer generation."""
@@ -24,9 +22,7 @@ class RelevanceCheckerAgent:
             self.structured_llm = self.model.with_structured_output(RelevanceResponse)
         except Exception as e:
             logger.error(f"Failed to bind RelevanceResponse schema: {e}")
-            raise RelevanceAuditError(
-                "LLM provider does not support structured output."
-            )
+            raise RelevanceAuditError("LLM provider does not support structured output.")
 
     async def check(self, question: str, documents: list) -> RelevanceStatus:
         """Evaluate whether the documents contain enough info to answer the question."""
@@ -34,9 +30,7 @@ class RelevanceCheckerAgent:
             logger.warning("RelevanceCheckerAgent received zero documents.")
             return RelevanceStatus.NO_MATCH
 
-        context_text = "\n\n".join(
-            f"Doc {i}: {d.page_content}" for i, d in enumerate(documents)
-        )
+        context_text = "\n\n".join(f"Doc {i}: {d.page_content}" for i, d in enumerate(documents))
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -60,13 +54,11 @@ class RelevanceCheckerAgent:
             result: RelevanceResponse = await chain.ainvoke(
                 {
                     "question": question,
-                    "context": context_text[:_MAX_CONTEXT_CHARS],
+                    "context": context_text[: settings.agent.max_verifier_context_chars],
                 }
             )
 
-            logger.info(
-                f"Relevance Audit: {result.status} | Reason: {result.reasoning}"
-            )
+            logger.info(f"Relevance Audit: {result.status} | Reason: {result.reasoning}")
             return result.status
 
         except Exception as e:

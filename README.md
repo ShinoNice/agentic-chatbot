@@ -1,160 +1,189 @@
 # Agentic Chatbot
 
-A multi-agent RAG (Retrieval-Augmented Generation) chatbot built with LangGraph, FastAPI and Streamlit.
+> Self-correcting multi-agent RAG on user-uploaded PDFs, with MCP-based PII guardrails and a full audit trail. Live on Azure Container Apps.
+
+**🌐 Live demo:** <https://ca-chatbot-ui.blacktree-3305419b.northeurope.azurecontainerapps.io/>
+Upload any PDF, ask it questions — the chatbot answers only from your document, with a self-verifying answer loop.
+
+![CI](https://github.com/ShinoNice/agentic-chatbot/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+
+<!-- Drop a screenshot or GIF of the Streamlit UI here once captured:
+![UI screenshot](docs/screenshots/ui-demo.png) -->
+
+---
+
+## What makes this different
+
+- **Self-correcting agent loop (LangGraph).** A Relevance Checker → Researcher → Verifier pipeline re-runs retrieval when the verifier flags unsupported claims. Bounded by `app.max_iterations`, so it cannot loop forever.
+- **Measured retrieval quality.** Hybrid BM25 + dense retrieval with a cross-encoder reranker lifts Context Precision from **0.673 → 0.923 (+25.0 pp)** on a 200-item RAGAS golden set — not a hand-wavy "LangChain demo" claim, a reproducible number.
+- **Per-session PDF upload.** Visitors drop their own PDF; it's ingested into a session-scoped Pinecone namespace and isolated from the default corpus and from every other visitor. No cross-contamination.
+- **Production-flavoured compliance primitives via MCP.** Two FastMCP servers wired into the graph: regex-based PII guardrails (12 PT/EU + international patterns with checksum validation) and a SQLite audit trail keyed by session ID, queryable at `GET /api/audit/{session_id}`.
+- **Shipped.** Live on Azure Container Apps (UI public, API internal-only, secrets from Key Vault), documented in a real 288-line deployment runbook.
+
+## Benchmarks (golden\_set\_v2, 200 questions, GPT-4o-mini)
+
+| Config                    | Context Precision     | Context Recall   | Faithfulness     |
+| ------------------------- | --------------------- | ---------------- | ---------------- |
+| Baseline (no rerank)      | 0.673                 | 0.967            | 0.951            |
+| **30 → 10 (default)**     | **0.923 (+25.0 pp)**  | 1.000 (+3.3 pp)  | 0.980 (+2.9 pp)  |
+| 30 → 5 (rejected)         | 0.945 (+27.2 pp)      | 0.900 (−6.7 pp)  | 0.968 (+1.7 pp)  |
+
+The aggressive `top_k=5` config was rejected because it broke recall on comparison-style questions where the answer requires multiple chunks. Full sweep methodology, per-question delta analysis, and a discussion of the failure mode are in the [reranker design spec](docs/superpowers/specs/2026-04-08-reranker-design.md). Raw CSVs: [evaluation/results/](evaluation/results/).
 
 ## Architecture
 
 ```
-┌─────────────────┐     HTTP      ┌──────────────────┐
+┌─────────────────┐     HTTPS     ┌──────────────────┐
 │  Streamlit UI   │ ────────────► │   FastAPI Backend │
-│  (port 8501)    │   port 8001   │   (port 8001)     │
+│   (port 8501)   │               │   (port 8001)     │
 └─────────────────┘               └──────────────────┘
                                           │
                      ┌────────────────────┼────────────────────┐
                      ▼                    ▼                    ▼
-              Vector Store           LLM (OpenAI)        MCP Servers
-           (Pinecone / Chroma)        GPT-4o-mini     (Guardrails + Audit)
+              Vector Store           LLM (OpenAI)         MCP Servers
+           (Pinecone / Chroma)       GPT-4o-mini      (Guardrails + Audit)
 ```
 
-**LangGraph workflow:** Guardrails Input → Retrieve → Rerank → Relevance Check → Research → Guardrails Output → Verify
+**LangGraph flow:** `guardrails_input → retrieve → rerank → check_relevance → research → guardrails_output → verify` (with a retry edge back to `retrieve` when the verifier rejects the draft answer).
 
-**Retrieval pipeline:** Hybrid search (BM25 + dense vectors) → Cross-encoder reranker (`BAAI/bge-reranker-base`) → top-K chunks → agents.
+**Retrieval:** Hybrid search (BM25 40% + dense 60% via `EnsembleRetriever`) fans out to `rerank.candidate_k=30` candidates, then `BAAI/bge-reranker-base` picks the top `rerank.top_k=10`.
 
-**MCP servers:** Two FastMCP servers integrated into the workflow for sensitive data handling:
-- **Guardrails** — PII detection and redaction (PT/EU + international patterns) on both input queries and output answers
-- **Audit Trail** — SQLite-backed event logging of every node transition for compliance
+## MCP Servers
 
-### Reranking
+Two [Model Context Protocol](https://modelcontextprotocol.io/) servers wired in as LangGraph nodes. They can also run standalone over stdio for external clients (Claude Desktop, etc.):
 
-A cross-encoder reranking step sits between hybrid retrieval and the relevance check. Hybrid search returns a wide candidate pool (`rerank.candidate_k`, default 30); the reranker scores `(query, chunk)` pairs and keeps the top `rerank.top_k` (default 10). Toggleable via `config/settings.yaml`.
+### Guardrails MCP — [src/mcp/guardrails/](src/mcp/guardrails/)
 
-The chosen defaults are backed by a measured RAGAS sweep against `golden_set_v2.json`:
+Regex-based PII detection + redaction on both input queries (pre-retrieval) and draft answers (pre-delivery). Zero API cost, deterministic, 36 pattern/redaction tests covering true AND false positives:
 
-| Config | Context Precision | Context Recall | Faithfulness |
-|---|---|---|---|
-| Baseline (no rerank) | 0.673 | 0.967 | 0.951 |
-| **30 → 10 (default)** | **0.923 (+25.0 pp)** | 1.000 (+3.3 pp) | 0.980 (+2.9 pp) |
-| 30 → 5 (rejected) | 0.945 (+27.2 pp) | 0.900 (−6.7 pp) | 0.968 (+1.7 pp) |
-
-The aggressive `top_k=5` config was rejected because it broke recall on comparison-style questions where the answer requires multiple chunks. Full sweep methodology, per-question delta analysis, and a discussion of the failure mode are in the [reranker design spec](docs/superpowers/specs/2026-04-08-reranker-design.md). Raw eval CSVs live under [evaluation/results/](evaluation/results/).
-
-### MCP Servers
-
-Two [Model Context Protocol](https://modelcontextprotocol.io/) servers provide sensitive-data capabilities, integrated as LangGraph nodes:
-
-**Guardrails MCP** (`src/mcp/guardrails/`) — scans and redacts PII from both user queries (before retrieval) and draft answers (before delivery). Regex-based, zero API cost, fully deterministic.
-
-Detected PII patterns:
 - **Portuguese/EU:** NIF (mod-11 validated), PT phone (+351/9xx/2xx), NISS, Cartão de Cidadão, IBAN, Código Postal
 - **International:** Email, credit card (Luhn validated), IPv4, date of birth, SSN, international phone
 
-Three redaction strategies configurable via `config/settings.yaml`:
-- `mask` (default) — `joao@test.pt` → `[REDACTED_EMAIL]`
-- `hash` — `joao@test.pt` → `[EMAIL:a3f2b8...]`
-- `remove` — deletes the matched text
+Three redaction strategies: `mask` (default), `hash`, `remove`.
 
-**Audit Trail MCP** (`src/mcp/audit/`) — logs every LangGraph node transition (query received, documents retrieved, PII detected, answer generated, verification completed, etc.) to a SQLite database at `data/audit/audit.db`. Queryable via `GET /api/audit/{session_id}`. Configurable retention (default 90 days).
+### Audit Trail MCP — [src/mcp/audit/](src/mcp/audit/)
 
-Both servers are built with FastMCP and can also run standalone for external MCP clients:
+SQLite-backed event store (via `aiosqlite`) logging every LangGraph node transition — query received, documents retrieved, PII detected, answer generated, verification completed. Retention configurable (default 90 days). Queryable via `GET /api/audit/{session_id}`.
+
 ```bash
-uv run python -m src.mcp.guardrails   # stdio MCP server
-uv run python -m src.mcp.audit        # stdio MCP server
+# Run either server standalone as an MCP stdio server:
+uv run python -m src.mcp.guardrails
+uv run python -m src.mcp.audit
 ```
 
 ## Prerequisites
 
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/) — the project is uv-managed via `pyproject.toml` + `uv.lock`; pip/poetry/conda are not supported
-- Docker & Docker Compose (for containerised run)
-- API keys — copy `.env.example` to `.env` and fill in your keys
+- [uv](https://docs.astral.sh/uv/) — pip/poetry/conda are not supported
+- Docker & Docker Compose (optional — for containerised run)
 
 ## Quick Start — Local
 
 ```bash
-# 1. Clone and enter the project
-git clone https://github.com/<your-username>/agentic-chatbot.git
+git clone https://github.com/ShinoNice/agentic-chatbot.git
 cd agentic-chatbot
 
-# 2. Install uv (if you don't have it)
+# Install uv (one-off, skip if already installed)
 # Windows (PowerShell):  powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 # macOS / Linux:         curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. Install dependencies (uv creates and populates .venv automatically)
 uv sync
+cp .env.example .env        # then fill in OPENAI_API_KEY (required)
 
-# 4. Configure secrets
-copy .env.example .env        # Windows
-# cp .env.example .env        # macOS/Linux
-# Edit .env and fill in your API keys
-
-# 5. Run the API backend
+# Run API + UI in two terminals
 uv run uvicorn src.api.app:app --reload --port 8001
-
-# 6. Run the Streamlit UI (in a separate terminal)
 uv run streamlit run ui/streamlit_frontend.py --server.port 8501
 
-# 7. (Optional) Run the CLI
+# Optional: CLI
 uv run python -m src.main
 ```
 
 ## Quick Start — Docker
 
 ```bash
-# Copy and fill in secrets
-copy .env.example .env   # then edit .env
-
-# Build and start all services (first build takes ~5–10 min; layers cache afterwards)
+cp .env.example .env
 docker compose up --build -d
-
-# Confirm both containers are up and api is healthy
-docker compose ps
 
 # Services:
 #   API      → http://localhost:8001
 #   UI       → http://localhost:8501
 #   API docs → http://localhost:8001/docs
-
-# Tail logs / stop
-docker compose logs -f
-docker compose down
 ```
 
-The image is a **multi-stage uv build** with CPU-only PyTorch wired at the package-manager level (`[tool.uv.sources]` in `pyproject.toml`), so `uv sync --frozen` in the builder stage produces a reproducible ~2–3 GB runtime image with no CUDA libraries, no compiler, and a non-root user. Inside the compose network, the UI reaches the API via the service name (`http://api:8001`) using the `API_BASE_URL` env var — host dev keeps using `http://localhost:8001`.
+Multi-stage image, CPU-only PyTorch pinned via `[tool.uv.sources]`, non-root user, no `build-essential` at runtime.
+
+## Testing
+
+```bash
+uv run pytest -q --no-header              # 94 tests
+make cov                                  # with 60% coverage floor
+uv run ruff check .                        # lint
+```
+
+CI (GitHub Actions) enforces both on every push + PR. Pre-commit hooks match.
+
+## API surface
+
+| Endpoint                      | Purpose                                                       |
+| ----------------------------- | ------------------------------------------------------------- |
+| `POST /api/chat`              | Ask a question (routes to session orchestrator if one exists) |
+| `POST /api/upload`            | Upload a PDF (≤ 20 MiB) into a session-scoped namespace       |
+| `POST /api/ingest`            | Ingest PDFs from `data/raw/` into the default corpus          |
+| `GET  /api/audit/{sid}`       | Replay the audit trail for a session                          |
+| `GET  /api/healthz`           | Liveness probe (always 200 while the loop is responsive)      |
+| `GET  /api/readyz`            | Readiness probe (503 until the knowledge base is loaded)      |
+
+Every response carries an `X-Request-ID` header; logs surface the same ID so a single chat turn is reconstructable end-to-end.
 
 ## Project Structure
 
 ```
-├── config/          # YAML config (settings, prompts, logging)
-├── data/            # Raw docs, cache, vector DB (gitignored)
-├── evaluation/      # RAGAS / DeepEval evaluation pipeline
-├── notebooks/       # Exploratory notebooks
+├── .github/workflows/ # CI (tests + ruff + Docker smoke build)
+├── config/            # YAML config (settings, prompts, logging)
+├── data/              # Raw docs, cache, vector DB (gitignored)
+├── docs/              # Azure deployment runbook, design specs
+├── evaluation/        # RAGAS evaluation pipeline + golden sets
+├── infra/             # Bicep IaC for the Azure stack
 ├── src/
-│   ├── api/         # FastAPI app, routes, schemas
-│   ├── core/        # Config loader, logger, exceptions
-│   ├── engines/     # OpenAI client, embedding model
-│   ├── mcp/         # MCP servers (guardrails PII + audit trail)
-│   ├── retrieval/   # Document processor, hybrid search, vector store
-│   ├── schemas/     # Pydantic schemas
-│   └── workflow/    # LangGraph orchestrator, agents, memory
-├── tests/           # pytest suite (mirrors src/)
-├── ui/              # Streamlit frontend
-├── .env.example     # Template for required environment variables
-├── .dockerignore
-├── docker-compose.yml
-├── Dockerfile
-├── pyproject.toml   # Dependencies, tool config (uv-managed)
-└── uv.lock          # Locked dependency graph (committed for reproducible builds)
+│   ├── api/           # FastAPI app, routes, schemas, middleware
+│   ├── core/          # Config loader, logger, exceptions
+│   ├── engines/       # OpenAI client, embedding model
+│   ├── mcp/           # MCP servers (guardrails PII + audit trail)
+│   ├── retrieval/     # Document processor, hybrid search, vector store, reranker
+│   ├── schemas/       # Pydantic schemas
+│   └── workflow/      # LangGraph orchestrator, agents, memory
+├── tests/             # pytest suite (mirrors src/, 67% coverage)
+├── ui/                # Streamlit frontend
+└── pyproject.toml     # Dependencies, tool config (uv-managed)
 ```
 
 ## Environment Variables
 
-See [.env.example](.env.example) for all required variables.
+See [.env.example](.env.example) for the full template.
 
-| Variable | Description |
-|---|---|
-| `OPENAI_API_KEY` | OpenAI API key (required) |
-| `PINECONE_API_KEY` | Pinecone key — leave empty to use local ChromaDB |
-| `TAVILY_API_KEY` | Reserved for future web-search tool. **Currently unused** — no code in `src/` consumes it. |
-| `LANGSMITH_API_KEY` | LangSmith observability (optional) |
-| `GEMINI_API_KEY` | Google Gemini (optional, for secondary LLM) |
-| `API_BASE_URL` | (Docker only) Set automatically by `docker-compose.yml` so the UI container reaches the API at `http://api:8001`. Unset for local dev. |
+| Variable              | Description                                                               |
+| --------------------- | ------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`      | OpenAI API key (required)                                                 |
+| `PINECONE_API_KEY`    | Pinecone key — leave empty to fall back to local ChromaDB                 |
+| `LANGSMITH_API_KEY`   | LangSmith observability (optional)                                        |
+| `LANGSMITH_TRACING`   | Set to `true` to enable LangSmith tracing on both CLI and API paths       |
+| `API_BASE_URL`        | Docker-compose sets this so the UI container reaches the API by service DNS |
+
+## Deployment
+
+The live demo runs on Azure Container Apps. One-shot deployment via Bicep:
+
+```bash
+az deployment group create \
+  --resource-group rg-agentic-chatbot \
+  --template-file infra/main.bicep \
+  --parameters @infra/main.parameters.json
+```
+
+Full deployment notes (including the ACA internal/public split, Key Vault wiring, and the quirks of `az containerapp update` CLI arg parsing) live in [docs/azure-deployment-notes.md](docs/azure-deployment-notes.md).
+
+## License
+
+[MIT](LICENSE)

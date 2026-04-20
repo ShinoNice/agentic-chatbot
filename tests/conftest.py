@@ -6,14 +6,12 @@ the test suite grows.
 
 from __future__ import annotations
 
-from typing import List
-
 import pytest
 from langchain_core.documents import Document
 
 
 @pytest.fixture
-def sample_documents() -> List[Document]:
+def sample_documents() -> list[Document]:
     """Four small Documents with distinct content for reranker tests."""
     return [
         Document(

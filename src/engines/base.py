@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 
 class BaseLLM(ABC):
@@ -10,7 +10,7 @@ class BaseLLM(ABC):
         self,
         system_prompt: str,
         user_prompt: str,
-        model_name: Optional[str] = None,
+        model_name: str | None = None,
     ) -> str:
         """Generate a text response from the LLM."""
         ...

@@ -73,9 +73,7 @@ def client(patched_system):
     return TestClient(app)
 
 
-def test_upload_accepts_pdf_and_returns_session_namespace(
-    client, fake_pdf_bytes, patched_system
-):
+def test_upload_accepts_pdf_and_returns_session_namespace(client, fake_pdf_bytes, patched_system):
     """Happy path: POST /api/upload with a PDF returns chunk count + namespace."""
     response = client.post(
         "/api/upload",

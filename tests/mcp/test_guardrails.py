@@ -12,7 +12,6 @@ from src.mcp.guardrails.patterns import (
 )
 from src.mcp.guardrails.server import redact_text, scan_pii
 
-
 # ── NIF (Portuguese tax ID) ─────────────────────────────────────────
 
 
@@ -260,9 +259,6 @@ class TestEdgeCases:
 
 
 # ── Redaction (FastMCP server tools) ────────────────────────────────
-
-
-
 
 
 class TestScanPiiTool:

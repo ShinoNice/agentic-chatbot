@@ -1,15 +1,15 @@
 [project]
 name = "agentic-chatbot"
 version = "0.1.0"
-description = "Add your description here"
+description = "Multi-agent RAG chatbot with LangGraph self-correction, hybrid retrieval, and MCP-based PII guardrails + audit trail."
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "MIT" }
 dependencies = [
     "chromadb>=1.5.0",
     "docling>=2.74.0",
     "fastapi>=0.129.0",
     "httpx>=0.28.1",
-    "ipykernel>=7.2.0",
     "langchain>=1.2.10",
     "langchain-community>=0.4.1",
     "langchain-core>=1.2.13",
@@ -21,24 +21,31 @@ dependencies = [
     "langsmith>=0.7.4",
     "mcp[cli]>=1.26.0",
     "aiosqlite>=0.20.0",
-    "mypy>=1.19.1",
     "pandas>=2.3.3",
     "pinecone>=7.3.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.0",
     "pymupdf>=1.27.1",
-    "pytest>=9.0.2",
     "python-dotenv>=1.2.1",
     "python-json-logger>=4.0.0",
     "pyyaml>=6.0.3",
     "ragas>=0.4.3",
     "rank-bm25>=0.2.2",
-    "ruff>=0.15.1",
     "sentence-transformers>=3.0.0",
     "streamlit>=1.54.0",
     "torch>=2.10.0",
     "torchvision>=0.25.0",
     "uvicorn>=0.41.0",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.15.1",
 ]
 
 [tool.uv.sources]
@@ -49,3 +56,42 @@ torchvision = { index = "pytorch-cpu" }
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "src/main.py",
+    "src/mcp/guardrails/__main__.py",
+    "src/mcp/audit/__main__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+# B008: FastAPI idiom — Depends()/File()/Form() in default args is canonical.
+# B904: HTTPException re-raises in route handlers don't need `from exc` — the
+#       original traceback is already logged before re-raising as a clean 4xx/5xx.
+# E501: line length handled by the formatter.
+# E731: `dummy = lambda x: x` in scripts is fine for placeholder adapters.
+ignore = ["E501", "E731", "B008", "B904"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]

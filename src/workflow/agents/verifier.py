@@ -6,8 +6,6 @@ from src.core.logger import logger
 from src.engines.base import BaseLLM
 from src.schemas.agent_schemas import VerificationReport
 
-_MAX_CONTEXT_CHARS = 12_000
-
 
 class VerificationAgent:
     """Agent that audits a draft answer against source context for hallucinations and contradictions."""
@@ -26,17 +24,14 @@ class VerificationAgent:
             logger.error(f"Failed to bind VerificationReport schema: {e}")
             raise AgentError("LLM provider does not support structured output.")
 
-    async def verify(
-        self, question: str, answer: str, documents: list
-    ) -> VerificationReport:
+    async def verify(self, question: str, answer: str, documents: list) -> VerificationReport:
         """Compare the draft answer against the provided documents."""
         if not answer:
             logger.warning("VerificationAgent received an empty draft answer.")
             return VerificationReport(supported=False, relevant=False)
 
         context_text = "\n\n".join(
-            f"SOURCE [{d.metadata.get('source', 'Unknown')}]: {d.page_content}"
-            for d in documents
+            f"SOURCE [{d.metadata.get('source', 'Unknown')}]: {d.page_content}" for d in documents
         )
 
         prompt = ChatPromptTemplate.from_messages(
@@ -71,7 +66,7 @@ class VerificationAgent:
                 {
                     "question": question,
                     "answer": answer,
-                    "context": context_text[:_MAX_CONTEXT_CHARS],
+                    "context": context_text[: settings.agent.max_verifier_context_chars],
                 }
             )
 

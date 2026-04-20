@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.dependencies import init_system
+from src.api.middleware import RequestIdMiddleware
 from src.api.routes import router
 from src.core.config_loader import settings
 from src.core.logger import logger
@@ -15,11 +17,21 @@ from src.core.logger import logger
 async def lifespan(application: FastAPI):
     """Startup / shutdown lifecycle hook."""
     logger.info("API starting up …")
+
+    # LangSmith tracing is auto-enabled by LangChain when these env vars are set;
+    # logging here makes it explicit whether the API is sending traces so a
+    # silent misconfiguration doesn't go unnoticed in production.
+    tracing_enabled = os.getenv("LANGSMITH_TRACING", "").lower() == "true"
+    if tracing_enabled and os.getenv("LANGSMITH_API_KEY"):
+        logger.info(
+            f"LangSmith tracing ENABLED (project={os.getenv('LANGSMITH_PROJECT', 'default')})."
+        )
+    else:
+        logger.info("LangSmith tracing DISABLED.")
+
     system = init_system()
     await system.try_connect_existing()
-    logger.info(
-        f"Knowledge base ready: {system.is_ready} (store: {system.vector_store_type})"
-    )
+    logger.info(f"Knowledge base ready: {system.is_ready} (store: {system.vector_store_type})")
     yield
     logger.info("API shutting down.")
 
@@ -36,16 +48,19 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── CORS (permissive for local dev) ───────────────────────────────
+    # Correlation IDs — must run before CORS so the header is present on
+    # preflight responses too.
+    application.add_middleware(RequestIdMiddleware)
+
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.app.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
     )
 
-    # ── Routes ────────────────────────────────────────────────────────
     application.include_router(router, prefix="/api")
 
     return application

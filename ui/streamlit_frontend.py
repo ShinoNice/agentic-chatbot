@@ -17,8 +17,7 @@ _REQUEST_TIMEOUT: float = 120.0
 _NO_MATCH: str = "NO_MATCH"
 _MSG_UNREACHABLE: str = "⚠️ Could not reach the backend."
 _MSG_KB_NOT_READY: str = (
-    "⚠️ The knowledge base is not loaded yet. "
-    "Please ingest documents first using the sidebar."
+    "⚠️ The knowledge base is not loaded yet. Please ingest documents first using the sidebar."
 )
 
 logger = logging.getLogger(__name__)
@@ -402,10 +401,7 @@ def main() -> None:
     )
 
     if st.session_state.uploaded_filename:
-        st.info(
-            f"📄 **Querying your uploaded document:** "
-            f"`{st.session_state.uploaded_filename}`"
-        )
+        st.info(f"📄 **Querying your uploaded document:** `{st.session_state.uploaded_filename}`")
     else:
         st.info(
             "📚 **Querying the default corpus:** DeepSeek Technical Report, "

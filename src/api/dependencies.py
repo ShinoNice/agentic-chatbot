@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -26,17 +26,17 @@ class SystemManager:
         self.processor = DocumentProcessor()
         self.vector_manager = VectorStoreManager()
 
-        self.searcher: Optional[HybridSearcher] = None
-        self.orchestrator: Optional[RAGOrchestrator] = None
+        self.searcher: HybridSearcher | None = None
+        self.orchestrator: RAGOrchestrator | None = None
 
-        self._files_indexed: List[str] = []
+        self._files_indexed: list[str] = []
         self._total_chunks: int = 0
 
         # Per-session orchestrators built from user-uploaded PDFs. A session
         # only appears here after it successfully posts to /api/upload; /chat
         # then prefers the session-scoped orchestrator over the default one.
-        self._session_searchers: Dict[str, HybridSearcher] = {}
-        self._session_orchestrators: Dict[str, RAGOrchestrator] = {}
+        self._session_searchers: dict[str, HybridSearcher] = {}
+        self._session_orchestrators: dict[str, RAGOrchestrator] = {}
 
     def _searcher_k(self) -> int:
         """Decide how many candidates the retriever returns.
@@ -80,12 +80,12 @@ class SystemManager:
             # Reconstruct documents from cached chunk JSONs so that
             # HybridSearcher can build (or rebuild) its BM25 index.
             cache_dir = Path(settings.rag.cache_dir)
-            cached_docs: List[Document] = []
+            cached_docs: list[Document] = []
             for jf in sorted(cache_dir.glob("*.json")):
                 if jf.name == "bm25_documents.json":
                     continue
                 try:
-                    with open(jf, "r", encoding="utf-8") as f:
+                    with open(jf, encoding="utf-8") as f:
                         data = json.load(f)
                     cached_docs.extend(
                         Document(page_content=d["page_content"], metadata=d["metadata"])
@@ -112,7 +112,7 @@ class SystemManager:
 
     # ── Ingestion ─────────────────────────────────────────────────────
 
-    async def ingest(self, namespace: str = "default") -> Dict[str, Any]:
+    async def ingest(self, namespace: str = "default") -> dict[str, Any]:
         """Process PDFs in ``data/raw/`` and upsert into the vector store.
 
         Returns a summary dict consumed by the ``/ingest`` route.
@@ -135,17 +135,14 @@ class SystemManager:
         chunks = self.processor.process(pdf_files)
         vector_store = self.vector_manager.create_index(chunks, namespace=namespace)
 
-        self.searcher = HybridSearcher(
-            vector_store, documents=chunks, k=self._searcher_k()
-        )
+        self.searcher = HybridSearcher(vector_store, documents=chunks, k=self._searcher_k())
         self.orchestrator = RAGOrchestrator(self.searcher)
 
         self._files_indexed = [p.name for p in pdf_files]
         self._total_chunks = len(chunks)
 
         logger.info(
-            f"SystemManager: ingestion complete — "
-            f"{len(pdf_files)} files, {len(chunks)} chunks."
+            f"SystemManager: ingestion complete — {len(pdf_files)} files, {len(chunks)} chunks."
         )
 
         return {
@@ -162,7 +159,7 @@ class SystemManager:
         file_bytes: bytes,
         filename: str,
         session_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Ingest a single uploaded PDF into a session-scoped Pinecone namespace.
 
         Subsequent /chat calls with the same ``session_id`` will retrieve only
@@ -196,8 +193,7 @@ class SystemManager:
         self._session_orchestrators[session_id] = orchestrator
 
         logger.info(
-            f"SystemManager: uploaded {filename} into namespace {namespace} "
-            f"({len(chunks)} chunks)."
+            f"SystemManager: uploaded {filename} into namespace {namespace} ({len(chunks)} chunks)."
         )
 
         return {
@@ -209,7 +205,7 @@ class SystemManager:
 
     # ── Query ─────────────────────────────────────────────────────────
 
-    async def query(self, question: str, session_id: str = "") -> Dict[str, Any]:
+    async def query(self, question: str, session_id: str = "") -> dict[str, Any]:
         """Run the full agentic RAG pipeline and return the final state.
 
         When ``session_id`` matches a prior upload, routes through that
@@ -229,7 +225,7 @@ class SystemManager:
 
 # ── FastAPI dependency ────────────────────────────────────────────────
 
-_system: Optional[SystemManager] = None
+_system: SystemManager | None = None
 
 
 def get_system() -> SystemManager:

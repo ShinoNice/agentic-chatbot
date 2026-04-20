@@ -2,19 +2,15 @@ import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
-from typing import List
 
 import fitz
 from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from src.core.config_loader import settings
-from src.core.logger import logger
 from src.core.exceptions import DocumentProcessingError
-
-_DOCLING_TIMEOUT_SECONDS = 300
-_MAX_DOCLING_PAGES = 80
+from src.core.logger import logger
 
 
 class DocumentProcessor:
@@ -45,8 +41,8 @@ class DocumentProcessor:
             logger.info("Initialising Docling DocumentConverter (first uncached PDF)...")
             from docling.datamodel.base_models import InputFormat
             from docling.datamodel.pipeline_options import (
-                RapidOcrOptions,
                 PdfPipelineOptions,
+                RapidOcrOptions,
             )
             from docling.document_converter import DocumentConverter, PdfFormatOption
 
@@ -59,14 +55,12 @@ class DocumentProcessor:
                 allow_external_plugins=True,
             )
             self._docling_converter = DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-                }
+                format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
             )
             logger.info("Docling DocumentConverter ready.")
         return self._docling_converter
 
-    def process(self, file_paths: List[Path]) -> List[Document]:
+    def process(self, file_paths: list[Path]) -> list[Document]:
         """
         Orchestrates the processing of multiple files.
         Checks cache first to avoid redundant computation.
@@ -88,7 +82,7 @@ class DocumentProcessor:
 
         return all_chunks
 
-    def _process_single_file(self, file_path: Path) -> List[Document]:
+    def _process_single_file(self, file_path: Path) -> list[Document]:
         """
         Processes one PDF: Load -> Clean -> Chunk -> Hash -> Cache.
         """
@@ -96,11 +90,10 @@ class DocumentProcessor:
             cache_file = self.cache_dir / f"{file_path.stem}.json"
             if cache_file.exists():
                 logger.info(f"Loading {file_path.name} from cache...")
-                with open(cache_file, "r", encoding="utf-8") as f:
+                with open(cache_file, encoding="utf-8") as f:
                     data = json.load(f)
                 return [
-                    Document(page_content=d["page_content"], metadata=d["metadata"])
-                    for d in data
+                    Document(page_content=d["page_content"], metadata=d["metadata"]) for d in data
                 ]
 
             logger.info(f"Parsing new file: {file_path.name}")
@@ -115,10 +108,7 @@ class DocumentProcessor:
             final_chunks = self._enrich_metadata(chunks, file_path)
 
             # 5. Save to Cache
-            data = [
-                {"page_content": c.page_content, "metadata": c.metadata}
-                for c in final_chunks
-            ]
+            data = [{"page_content": c.page_content, "metadata": c.metadata} for c in final_chunks]
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, default=str)
 
@@ -127,11 +117,9 @@ class DocumentProcessor:
         except DocumentProcessingError:
             raise
         except Exception as e:
-            raise DocumentProcessingError(
-                f"Processing failed for {file_path.name}: {e}"
-            ) from e
+            raise DocumentProcessingError(f"Processing failed for {file_path.name}: {e}") from e
 
-    def _extract_text(self, file_path: Path) -> List[Document]:
+    def _extract_text(self, file_path: Path) -> list[Document]:
         """
         Attempts Docling for structure, falls back to PyMuPDF.
         Uses a pre-configured DocumentConverter to avoid std::bad_alloc on
@@ -141,24 +129,26 @@ class DocumentProcessor:
         """
         with fitz.open(file_path) as pdf:
             page_count = len(pdf)
-        if page_count > _MAX_DOCLING_PAGES:
+        if page_count > settings.docling.max_pages:
             logger.info(
                 f"Skipping Docling for {file_path.name} ({page_count} pages > "
-                f"{_MAX_DOCLING_PAGES}). Using PyMuPDF directly."
+                f"{settings.docling.max_pages}). Using PyMuPDF directly."
             )
             return self._pymupdf_fallback(file_path)
 
         try:
             from langchain_docling import DoclingLoader
 
-            logger.info(f"Attempting Docling parse for {file_path.name} (timeout: {_DOCLING_TIMEOUT_SECONDS}s)...")
+            logger.info(
+                f"Attempting Docling parse for {file_path.name} (timeout: {settings.docling.timeout_seconds}s)..."
+            )
             loader = DoclingLoader(
                 file_path=str(file_path), converter=self._get_docling_converter()
             )
 
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(loader.load)
-                docs = future.result(timeout=_DOCLING_TIMEOUT_SECONDS)
+                docs = future.result(timeout=settings.docling.timeout_seconds)
 
             if len(docs) < self.min_chunks_fallback:
                 raise ValueError(
@@ -172,7 +162,7 @@ class DocumentProcessor:
             return docs
         except TimeoutError:
             logger.warning(
-                f"Docling timed out after {_DOCLING_TIMEOUT_SECONDS}s for {file_path.name}, "
+                f"Docling timed out after {settings.docling.timeout_seconds}s for {file_path.name}, "
                 f"falling back to PyMuPDF."
             )
             return self._pymupdf_fallback(file_path)
@@ -182,7 +172,7 @@ class DocumentProcessor:
             )
             return self._pymupdf_fallback(file_path)
 
-    def _pymupdf_fallback(self, file_path: Path) -> List[Document]:
+    def _pymupdf_fallback(self, file_path: Path) -> list[Document]:
         """Fast, robust fallback PDF loader."""
         loader = PyMuPDFLoader(str(file_path))
         docs = loader.load()
@@ -191,9 +181,7 @@ class DocumentProcessor:
         logger.info(f"PyMuPDF parsed {file_path.name} ({len(docs)} page(s)).")
         return docs
 
-    def _enrich_metadata(
-        self, chunks: List[Document], file_path: Path
-    ) -> List[Document]:
+    def _enrich_metadata(self, chunks: list[Document], file_path: Path) -> list[Document]:
         """
         Adds deterministic hashes and source info to each chunk.
         This is critical for the VectorStore's deduplication logic.

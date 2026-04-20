@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Dict
+from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
@@ -31,9 +31,7 @@ class RAGOrchestrator:
         self.verifier = VerificationAgent(self.llm_engine)
 
         self.reranker = (
-            BGEReranker(app_settings.rerank.model_name)
-            if app_settings.rerank.enabled
-            else None
+            BGEReranker(app_settings.rerank.model_name) if app_settings.rerank.enabled else None
         )
 
         self.app = self._build_graph()
@@ -74,14 +72,11 @@ class RAGOrchestrator:
 
     # -- Guardrails Nodes --
 
-    async def node_guardrails_input(self, state: AgentState) -> Dict[str, Any]:
+    async def node_guardrails_input(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: GUARDRAILS INPUT ---")
         session_id = state.get("audit_session_id", "")
 
-        if (
-            not app_settings.mcp.guardrails.enabled
-            or not app_settings.mcp.guardrails.scan_input
-        ):
+        if not app_settings.mcp.guardrails.enabled or not app_settings.mcp.guardrails.scan_input:
             await audit_log(
                 session_id,
                 "query_received",
@@ -97,7 +92,7 @@ class RAGOrchestrator:
             detections=list(scan_result.detections),
         )
 
-        updates: Dict[str, Any] = {"guardrails_report": report}
+        updates: dict[str, Any] = {"guardrails_report": report}
 
         if scan_result.has_pii:
             redacted = await guardrails_redact(state["question"])
@@ -126,7 +121,7 @@ class RAGOrchestrator:
 
         return updates
 
-    async def node_guardrails_output(self, state: AgentState) -> Dict[str, Any]:
+    async def node_guardrails_output(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: GUARDRAILS OUTPUT ---")
         session_id = state.get("audit_session_id", "")
         draft = state.get("draft_answer", "")
@@ -140,7 +135,7 @@ class RAGOrchestrator:
 
         scan_result = await guardrails_scan(draft)
 
-        updates: Dict[str, Any] = {}
+        updates: dict[str, Any] = {}
 
         # Build a new report preserving input detections from earlier
         existing = state.get("guardrails_report")
@@ -181,9 +176,9 @@ class RAGOrchestrator:
 
     # -- Original Nodes (with audit logging) --
 
-    async def node_retrieve(self, state: AgentState) -> Dict[str, Any]:
+    async def node_retrieve(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: RETRIEVAL ---")
-        retriever = self.searcher.get_retriever()
+        retriever = await self.searcher.aget_retriever()
         docs = await retriever.ainvoke(state["question"])
 
         session_id = state.get("audit_session_id", "")
@@ -199,7 +194,7 @@ class RAGOrchestrator:
 
         return {"candidate_documents": docs}
 
-    async def node_rerank(self, state: AgentState) -> Dict[str, Any]:
+    async def node_rerank(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: RERANK ---")
         candidates = state["candidate_documents"]
         session_id = state.get("audit_session_id", "")
@@ -242,27 +237,21 @@ class RAGOrchestrator:
             )
             return {"documents": fallback}
 
-    async def node_check_relevance(self, state: AgentState) -> Dict[str, Any]:
+    async def node_check_relevance(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: RELEVANCE AUDIT ---")
-        status = await self.relevance_checker.check(
-            state["question"], state["documents"]
-        )
+        status = await self.relevance_checker.check(state["question"], state["documents"])
 
         session_id = state.get("audit_session_id", "")
         await audit_log(
             session_id,
             "relevance_checked",
             "check_relevance",
-            {
-                "status": status.value
-                if isinstance(status, RelevanceStatus)
-                else str(status)
-            },
+            {"status": status.value if isinstance(status, RelevanceStatus) else str(status)},
         )
 
         return {"relevance_status": status}
 
-    async def node_research(self, state: AgentState) -> Dict[str, Any]:
+    async def node_research(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: RESEARCH & DRAFTING ---")
         current_iter = state.get("iterations", 0)
         answer = await self.researcher.generate(state["question"], state["documents"])
@@ -277,7 +266,7 @@ class RAGOrchestrator:
 
         return {"draft_answer": answer, "iterations": current_iter + 1}
 
-    async def node_verify(self, state: AgentState) -> Dict[str, Any]:
+    async def node_verify(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: VERIFICATION AUDIT ---")
         report = await self.verifier.verify(
             state["question"],

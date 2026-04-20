@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Lint + Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Satisfy pydantic-settings at import-time without real secrets.
+      # Tests mock OpenAI / Pinecone / Tavily clients, so no outbound calls.
+      OPENAI_API_KEY: sk-test-placeholder
+      PINECONE_API_KEY: ""
+      PYTHONPATH: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies (frozen)
+        run: uv sync --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Pytest with coverage
+        run: uv run pytest -q --no-header --cov=src --cov-report=term-missing --cov-fail-under=60
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .coverage
+          if-no-files-found: ignore
+
+  docker-build:
+    name: Docker build (smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: lint-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: agentic-chatbot:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

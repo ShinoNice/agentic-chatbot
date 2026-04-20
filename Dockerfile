@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # ─── Stage 1: Builder ────────────────────────────────────────────────────────
 # Install dependencies into an isolated venv using uv. Dev deps excluded.
 # CPU-only torch is configured in pyproject.toml via [tool.uv.sources],
@@ -34,12 +36,31 @@ COPY config/ ./config/
 COPY evaluation/ ./evaluation/
 COPY pyproject.toml ./
 
+# BM25 cache: .dockerignore excludes data/ by default to keep the build
+# context small. If you want a populated BM25 index baked into the image
+# (eliminates the dense-only degradation in ACA), uncomment the line below
+# AND remove `data/cache/*.json` from .dockerignore for the subset you want
+# shipped. Keep individual chunk caches out — they can be gigabytes.
+# COPY data/cache/bm25_documents.json ./data/cache/bm25_documents.json
+
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=.
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-RUN mkdir -p /app/data && chown -R appuser:appgroup /app/data
+# Hugging Face / sentence-transformers cache location. Pinning it inside the
+# image lets us pre-bake the reranker model in the next RUN step.
+ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+
+# Pre-download the cross-encoder reranker so the first user query doesn't
+# eat a ~3-10s cold-download per replica start. Model is ~278 MB; the
+# image grows by that amount but first-query latency drops to <1s.
+RUN mkdir -p "$HF_HOME" \
+    && python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-base')"
+
+RUN mkdir -p /app/data /app/data/logs /app/data/cache /app/data/audit \
+    && chown -R appuser:appgroup /app/data /app/.cache
 
 USER appuser
 

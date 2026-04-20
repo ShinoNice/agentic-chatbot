@@ -8,7 +8,8 @@ async def generate_diagram():
     print("Building workflow graph structure...")
 
     try:
-        from langgraph.graph import StateGraph, END, START
+        from langgraph.graph import END, START, StateGraph
+
         from src.workflow.memory import AgentState
 
         workflow = StateGraph(AgentState)
@@ -51,6 +52,7 @@ async def generate_diagram():
     except Exception as e:
         print(f"Error generating diagram: {e}")
         import traceback
+
         traceback.print_exc()
 
 

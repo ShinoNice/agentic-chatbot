@@ -4,7 +4,7 @@ All tests use tmp_path for isolated SQLite DBs — no shared state.
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -23,17 +23,13 @@ def store(tmp_path):
 class TestLogEvent:
     def test_log_event_returns_uuid(self, store):
         event_id = asyncio.run(
-            store.log_event(
-                "sess-1", "query_received", "guardrails_input", {"q": "test"}
-            )
+            store.log_event("sess-1", "query_received", "guardrails_input", {"q": "test"})
         )
         assert event_id is not None
         assert len(event_id) == 36  # UUID4 format
 
     def test_log_multiple_events(self, store):
-        id1 = asyncio.run(
-            store.log_event("sess-1", "query_received", "guardrails_input", {})
-        )
+        id1 = asyncio.run(store.log_event("sess-1", "query_received", "guardrails_input", {}))
         id2 = asyncio.run(
             store.log_event("sess-1", "documents_retrieved", "retrieve", {"count": 10})
         )
@@ -73,9 +69,7 @@ class TestGetTrail:
 class TestGetSummary:
     def test_get_summary_counts(self, store):
         asyncio.run(store.log_event("sess-1", "query_received", "guardrails_input", {}))
-        asyncio.run(
-            store.log_event("sess-1", "documents_retrieved", "retrieve", {"count": 30})
-        )
+        asyncio.run(store.log_event("sess-1", "documents_retrieved", "retrieve", {"count": 30}))
         asyncio.run(
             store.log_event(
                 "sess-1",
@@ -127,7 +121,7 @@ class TestCleanup:
         import aiosqlite
 
         async def backdate():
-            old_ts = (datetime.now(timezone.utc) - timedelta(days=200)).isoformat()
+            old_ts = (datetime.now(UTC) - timedelta(days=200)).isoformat()
             async with aiosqlite.connect(store.db_path) as db:
                 await db.execute(
                     "UPDATE audit_events SET timestamp = ? WHERE session_id = ?",

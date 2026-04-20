@@ -7,7 +7,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import List
 
 import pandas as pd
 from openai import AsyncOpenAI
@@ -37,10 +36,10 @@ _RESULTS_DIR = Path("evaluation/results")
 
 async def _collect_samples(
     system: SystemManager,
-    raw_data: List[dict],
+    raw_data: list[dict],
     max_samples: int,
-) -> List[SingleTurnSample]:
-    samples: List[SingleTurnSample] = []
+) -> list[SingleTurnSample]:
+    samples: list[SingleTurnSample] = []
 
     for idx, item in enumerate(raw_data[:max_samples], start=1):
         question = item["question"]
@@ -105,8 +104,8 @@ async def run_evaluation(
         logger.error("Knowledge base not ready. Ingest documents first.")
         return
 
-    with open(dataset_path, "r", encoding="utf-8") as f:
-        raw_data: List[dict] = json.load(f)
+    with open(dataset_path, encoding="utf-8") as f:
+        raw_data: list[dict] = json.load(f)
     logger.info("Loaded %d samples from %s", len(raw_data), dataset_path)
 
     samples = await _collect_samples(system, raw_data, max_samples)
