@@ -17,8 +17,18 @@ name: Deploy to Azure
 #        AZURE_RG=rg-agentic-chatbot, ACR_NAME=acrhybridchatbot
 
 on:
-  push:
-    branches: [main]
+  # Manual-only until Azure OIDC is wired up.
+  #
+  # This workflow needs the following to actually succeed:
+  #   - Entra app registration with a federated credential for this repo
+  #   - Repo secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+  #   - Repo vars:    AZURE_RG, ACR_NAME
+  #
+  # Until those exist, firing on every push to main just produces a red X
+  # that fails at the `az login` step after a few seconds. Keep this on
+  # workflow_dispatch only; once Azure is wired, add:
+  #   push:
+  #     branches: [main]
   workflow_dispatch:
     inputs:
       imageTag:
