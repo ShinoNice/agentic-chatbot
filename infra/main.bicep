@@ -32,13 +32,10 @@ param location string = 'northeurope'
 @description('Short-name prefix for resources (<= 11 chars, lowercase).')
 param namePrefix string = 'chatbot'
 
-@description('Name of the existing Azure Container Registry.')
+@description('Name of the existing Azure Container Registry (assumed to be in this RG).')
 param acrName string = 'acrhybridchatbot'
 
-@description('Resource group holding the ACR (may differ from this RG).')
-param acrResourceGroup string = resourceGroup().name
-
-@description('Name of the existing Key Vault that stores LLM/Pinecone/LangSmith secrets.')
+@description('Name of the existing Key Vault that stores LLM/Pinecone/LangSmith secrets (assumed to be in this RG).')
 param keyVaultName string = 'kv-hybrid-chatbot'
 
 @description('Image tag to deploy for both apps (e.g. "v2").')
@@ -67,11 +64,17 @@ var uiAppName        = 'ca-${namePrefix}-ui'
 // Internal DNS the UI uses to reach the API inside the ACA env.
 var apiInternalUrl = 'http://${apiAppName}'
 
+// Compute loginServer from the ACR name instead of reading it off the resource.
+// Azure's template validator can't always resolve `acrLoginServer`
+// during what-if/validate (the reference() function returns an unresolved
+// expression), which causes the Container App image field to fail validation
+// with "invalid image format". <name>.azurecr.io is a stable convention.
+var acrLoginServer = '${acrName}.azurecr.io'
+
 // ── Existing resources ───────────────────────────────────────────────────────
 
 resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' existing = {
   name: acrName
-  scope: resourceGroup(acrResourceGroup)
 }
 
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -166,7 +169,7 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
       }
       registries: [
         {
-          server: acr.properties.loginServer
+          server: acrLoginServer
           identity: uami.id
         }
       ]
@@ -192,7 +195,7 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'api'
-          image: '${acr.properties.loginServer}/chatbot-api:${imageTag}'
+          image: '${acrLoginServer}/chatbot-api:${imageTag}'
           command: ['uvicorn']
           args: ['src.api.app:app', '--host', '0.0.0.0', '--port', '8001']
           resources: {
@@ -259,7 +262,7 @@ resource uiApp 'Microsoft.App/containerApps@2024-03-01' = {
       }
       registries: [
         {
-          server: acr.properties.loginServer
+          server: acrLoginServer
           identity: uami.id
         }
       ]
@@ -268,7 +271,11 @@ resource uiApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'ui'
-          image: '${acr.properties.loginServer}/chatbot-ui:${imageTag}'
+          image: '${acrLoginServer}/chatbot-ui:${imageTag}'
+          // The Dockerfile is a single image used by both apps and has no
+          // CMD — each ACA container picks its own start command.
+          command: ['streamlit']
+          args: ['run', 'ui/streamlit_frontend.py']
           resources: {
             cpu: json(cpu)
             memory: memory

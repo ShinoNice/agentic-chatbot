@@ -23,6 +23,20 @@ RUN uv sync --no-dev --no-install-project --frozen
 # Slim image with only the venv + source. No compiler, no dev deps.
 FROM python:3.12-slim
 
+# Docling transitively depends on OpenCV / Qt / Pillow bindings that try to
+# open X11 libraries (libxcb.so.1) even on headless servers. Without these the
+# parser crashes at load time with:
+#     libxcb.so.1: cannot open shared object file: No such file or directory
+# and the pipeline silently falls back to PyMuPDF, losing Docling's structured
+# output. Install just the minimum X-less shims; no X server is needed.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libxcb1 \
+    libxext6 \
+    libsm6 \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system appgroup \
     && useradd --system --gid appgroup --create-home --home-dir /home/appuser appuser
 
