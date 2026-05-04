@@ -32,6 +32,7 @@ dependencies = [
     "ragas>=0.4.3",
     "rank-bm25>=0.2.2",
     "sentence-transformers>=3.0.0",
+    "sse-starlette>=2.1.0",
     "streamlit>=1.54.0",
     "torch>=2.10.0",
     "torchvision>=0.25.0",

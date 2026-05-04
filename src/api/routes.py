@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from sse_starlette.sse import EventSourceResponse
 
 from src.api.dependencies import SystemManager, get_system
 from src.api.schemas import (
@@ -176,33 +179,8 @@ async def ingest_documents(
 # ── Chat ──────────────────────────────────────────────────────────────
 
 
-@router.post(
-    "/chat",
-    response_model=ChatResponse,
-    tags=["Chat"],
-    summary="Ask a question against the knowledge base",
-)
-async def chat(
-    body: ChatRequest,
-    system: SystemManager = Depends(get_system),
-):
-    if not system.is_ready:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Knowledge base is not loaded. Call POST /ingest first.",
-        )
-
-    session_id = body.session_id or str(uuid.uuid4())
-
-    try:
-        result = await system.query(body.question, session_id=session_id)
-    except Exception as exc:
-        logger.error(f"Query failed: {exc}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while processing the question.",
-        )
-
+def _build_chat_response(result: dict[str, Any], session_id: str) -> ChatResponse:
+    """Translate a raw orchestrator state dict into the wire ChatResponse."""
     answer = result.get("draft_answer") or "I couldn't generate an answer."
 
     rel_status = result.get("relevance_status")
@@ -238,8 +216,6 @@ async def chat(
             )
         )
 
-    guardrails_report = result.get("guardrails_report")
-
     return ChatResponse(
         answer=answer,
         session_id=session_id,
@@ -247,8 +223,73 @@ async def chat(
         verification=verification_detail,
         sources=sources,
         iterations=result.get("iterations", 0),
-        guardrails=guardrails_report,
+        guardrails=result.get("guardrails_report"),
     )
+
+
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    tags=["Chat"],
+    summary="Ask a question against the knowledge base",
+)
+async def chat(
+    body: ChatRequest,
+    system: SystemManager = Depends(get_system),
+):
+    if not system.is_ready:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Knowledge base is not loaded. Call POST /ingest first.",
+        )
+
+    session_id = body.session_id or str(uuid.uuid4())
+
+    try:
+        result = await system.query(body.question, session_id=session_id)
+    except Exception as exc:
+        logger.error(f"Query failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing the question.",
+        )
+
+    return _build_chat_response(result, session_id)
+
+
+@router.post(
+    "/chat/stream",
+    tags=["Chat"],
+    summary="Stream agent pipeline progress and final answer via SSE",
+)
+async def chat_stream(
+    body: ChatRequest,
+    system: SystemManager = Depends(get_system),
+):
+    if not system.is_ready:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Knowledge base is not loaded. Call POST /ingest first.",
+        )
+
+    session_id = body.session_id or str(uuid.uuid4())
+
+    async def event_generator():
+        try:
+            async for event_type, payload in system.query_stream(
+                body.question, session_id=session_id
+            ):
+                if event_type == "result":
+                    final = _build_chat_response(payload, session_id)
+                    yield {"event": "result", "data": final.model_dump_json()}
+                else:
+                    yield {"event": event_type, "data": json.dumps(payload)}
+            yield {"event": "done", "data": "{}"}
+        except Exception as exc:
+            logger.error(f"Stream failed: {exc}", exc_info=True)
+            yield {"event": "error", "data": json.dumps({"detail": str(exc)})}
+
+    return EventSourceResponse(event_generator())
 
 
 # ── Audit Trail ──────────────────────────────────────────────────────

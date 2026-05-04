@@ -222,6 +222,20 @@ class SystemManager:
         result = await orchestrator.run(question, session_id=session_id)
         return result
 
+    async def query_stream(self, question: str, session_id: str = ""):
+        """Yield (event_type, payload) tuples for streaming /chat consumers."""
+        orchestrator = self._session_orchestrators.get(session_id) or self.orchestrator
+
+        if orchestrator is None:
+            raise RuntimeError(
+                "Knowledge base is not loaded. Call POST /ingest or POST /upload first."
+            )
+
+        async for event_type, payload in orchestrator.astream_run(
+            question, session_id=session_id
+        ):
+            yield event_type, payload
+
 
 # ── FastAPI dependency ────────────────────────────────────────────────
 
