@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+@source "./**/*.{html,ts}";
+@source "./app/**/*.{html,ts}";
+
 @theme {
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
