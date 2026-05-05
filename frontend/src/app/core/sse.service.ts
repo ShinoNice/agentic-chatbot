@@ -34,18 +34,33 @@ export class SseService {
           const decoder = new TextDecoder();
           let buf = '';
 
+          const splitFrame = (b: string): [string, string] | null => {
+            const candidates = ['\r\n\r\n', '\n\n', '\r\r'];
+            let bestIdx = -1;
+            let bestLen = 0;
+            for (const sep of candidates) {
+              const i = b.indexOf(sep);
+              if (i !== -1 && (bestIdx === -1 || i < bestIdx)) {
+                bestIdx = i;
+                bestLen = sep.length;
+              }
+            }
+            if (bestIdx === -1) return null;
+            return [b.slice(0, bestIdx), b.slice(bestIdx + bestLen)];
+          };
+
           while (true) {
             const { value, done } = await reader.read();
             if (done) break;
             buf += decoder.decode(value, { stream: true });
 
-            let idx: number;
-            while ((idx = buf.indexOf('\n\n')) !== -1) {
-              const raw = buf.slice(0, idx);
-              buf = buf.slice(idx + 2);
+            let split = splitFrame(buf);
+            while (split) {
+              const [raw, rest] = split;
+              buf = rest;
               const evt = parseFrame(raw);
-              if (!evt) continue;
-              sub.next(toStreamEvent(evt));
+              if (evt) sub.next(toStreamEvent(evt));
+              split = splitFrame(buf);
             }
           }
           sub.complete();
@@ -65,7 +80,7 @@ export class SseService {
 function parseFrame(raw: string): { event: string; data: string } | null {
   let event = 'message';
   const dataLines: string[] = [];
-  for (const line of raw.split('\n')) {
+  for (const line of raw.split(/\r\n|\n|\r/)) {
     if (line.startsWith('event:')) event = line.slice(6).trim();
     else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
   }
