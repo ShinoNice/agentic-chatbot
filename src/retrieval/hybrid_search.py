@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -10,6 +11,30 @@ from langchain_core.documents import Document
 
 from src.core.config_loader import settings
 from src.core.logger import logger
+
+
+def ensure_chunk_ids(docs: list) -> list:
+    """Mutate-in-place + return docs with metadata['chunk_id'] populated.
+
+    Order of preference:
+      1. existing chunk_id (no-op)
+      2. existing chunk_hash → copy to chunk_id
+      3. sha1(source|page_number|page_content[:64]) as a deterministic fallback
+    """
+    for doc in docs:
+        meta = doc.metadata or {}
+        if meta.get("chunk_id"):
+            continue
+        if meta.get("chunk_hash"):
+            meta["chunk_id"] = meta["chunk_hash"]
+        else:
+            seed = (
+                f"{meta.get('source', '')}|{meta.get('page_number', '')}|"
+                f"{(doc.page_content or '')[:64]}"
+            )
+            meta["chunk_id"] = hashlib.sha1(seed.encode()).hexdigest()
+        doc.metadata = meta
+    return docs
 
 
 class HybridSearcher:

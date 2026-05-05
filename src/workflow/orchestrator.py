@@ -8,7 +8,7 @@ from src.core.exceptions import RerankerError
 from src.core.logger import logger
 from src.engines.openai_client import OpenAIClient
 from src.mcp.client import audit_log, guardrails_redact, guardrails_scan
-from src.retrieval.hybrid_search import HybridSearcher
+from src.retrieval.hybrid_search import HybridSearcher, ensure_chunk_ids
 from src.retrieval.reranker import BGEReranker
 from src.schemas.agent_schemas import GuardrailsReport, RelevanceStatus
 from src.workflow.agents.relevance_checker import (
@@ -180,6 +180,7 @@ class RAGOrchestrator:
         logger.info("--- NODE: RETRIEVAL ---")
         retriever = await self.searcher.aget_retriever()
         docs = await retriever.ainvoke(state["question"])
+        docs = ensure_chunk_ids(docs)
 
         session_id = state.get("audit_session_id", "")
         await audit_log(
