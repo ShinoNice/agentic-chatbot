@@ -7,6 +7,7 @@ from src.schemas.agent_schemas import (
     RelevanceStatus,
     VerificationReport,
 )
+from src.schemas.claim_schemas import Claim
 
 
 def merge_documents(old_docs: list[Document], new_docs: list[Document]) -> list[Document]:
@@ -38,3 +39,5 @@ class AgentState(TypedDict):
     error: str | None
     guardrails_report: GuardrailsReport | None
     audit_session_id: str
+    claims: list[Claim] | None
+    final_answer: str | None
