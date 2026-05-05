@@ -1,3 +1,5 @@
+import type { Claim, ClaimStatus } from '../core/claim.types';
+
 export interface SourceDocument {
   source: string;
   page_number: number | null;
@@ -33,6 +35,8 @@ export interface ChatResponse {
   sources: SourceDocument[];
   iterations: number;
   guardrails: GuardrailsReport | null;
+  claims?: Claim[];
+  truncated?: boolean;
 }
 
 export interface UploadResponse {
@@ -78,7 +82,15 @@ export type StreamEvent =
     }
   | { type: 'result'; payload: ChatResponse }
   | { type: 'done' }
-  | { type: 'error'; detail: string };
+  | { type: 'error'; detail: string }
+  | { type: 'claim_drafted'; claim: Claim }
+  | {
+      type: 'claim_verified';
+      claim_id: string;
+      status: ClaimStatus;
+      note: string | null;
+    }
+  | { type: 'claim_repaired'; claim_id: string; status: ClaimStatus };
 
 export type MessageRole = 'user' | 'assistant';
 
@@ -94,6 +106,8 @@ export interface ChatMessage {
   iterations?: number;
   isLoading?: boolean;
   isError?: boolean;
+  claims?: Claim[];
+  truncated?: boolean;
 }
 
 export interface ChatSession {
