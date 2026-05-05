@@ -16,13 +16,13 @@ async def _retrieve_for_claim(searcher, claim: Claim) -> list[Document]:
 async def _redraft_one(drafter, claim: Claim, chunks: list[Document]) -> Claim:
     """Ask the drafter for a single-claim ClaimSet scoped to this claim's text."""
     claim_set = await drafter.draft(claim.text, chunks)
-    if not claim_set.claims:
+    pending = claim_set.to_pending_claims()
+    if not pending:
         claim.status = ClaimStatus.UNSUPPORTED
         claim.verifier_note = "repair: drafter could not ground claim"
         return claim
-    repaired = claim_set.claims[0]
+    repaired = pending[0]
     repaired.id = claim.id  # preserve original id
-    repaired.status = ClaimStatus.PENDING  # reset for re-verify
     repaired.attempts = claim.attempts  # caller increments
     return repaired
 

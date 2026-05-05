@@ -2,7 +2,7 @@ import pytest
 from langchain_core.documents import Document
 
 from src.schemas.claim_schemas import (
-    Citation, Claim, ClaimSet, ClaimStatus,
+    Citation, Claim, ClaimSet, ClaimStatus, DraftedClaim,
 )
 from src.workflow.orchestrator import RAGOrchestrator
 
@@ -40,7 +40,7 @@ async def test_orchestrator_claim_path_returns_verified_claims(monkeypatch):
         async def draft(self, q, ch):
             return ClaimSet(
                 claims=[
-                    Claim(
+                    DraftedClaim(
                         id="c1",
                         text="BM25 is a probabilistic ranking function.",
                         citations=[Citation(chunk_id="ck1", quote="probabilistic ranking function")],
@@ -99,7 +99,7 @@ async def test_astream_emits_claim_events(monkeypatch):
         async def draft(self, q, ch):
             return ClaimSet(
                 claims=[
-                    Claim(id="c1", text="x", citations=[Citation(chunk_id="ck1", quote="x")])
+                    DraftedClaim(id="c1", text="x", citations=[Citation(chunk_id="ck1", quote="x")])
                 ]
             )
 

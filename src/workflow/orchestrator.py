@@ -328,16 +328,19 @@ class RAGOrchestrator:
     async def node_draft_claims(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: DRAFT CLAIMS ---")
         claim_set = await self.claim_drafter.draft(state["question"], state["documents"])
+        # Materialize Claims with status=PENDING so the verifier actually runs.
+        # ClaimSet.claims are DraftedClaim (no status field) by design.
+        claims = claim_set.to_pending_claims()
         # Mirror text into draft_answer so the existing guardrails_output node has
         # something to scan.
-        joined = " ".join(c.text for c in claim_set.claims)
+        joined = " ".join(c.text for c in claims)
         await audit_log(
             state.get("audit_session_id", ""),
             "claims_drafted",
             "draft_claims",
-            {"count": len(claim_set.claims), "claim_ids": [c.id for c in claim_set.claims]},
+            {"count": len(claims), "claim_ids": [c.id for c in claims]},
         )
-        return {"claims": list(claim_set.claims), "draft_answer": joined}
+        return {"claims": claims, "draft_answer": joined}
 
     async def node_verify_claims(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: VERIFY CLAIMS ---")

@@ -3,7 +3,11 @@ from langchain_core.documents import Document
 from langchain_core.runnables import Runnable, RunnableConfig
 
 from src.engines.base import BaseLLM
-from src.schemas.claim_schemas import Claim, ClaimSet, ClaimStatus, Citation
+from src.schemas.claim_schemas import (
+    Citation,
+    ClaimSet,
+    DraftedClaim,
+)
 from src.workflow.agents.claim_drafter import ClaimDrafter
 
 
@@ -48,11 +52,10 @@ async def test_drafter_returns_claims_from_chunks():
     ]
     expected = ClaimSet(
         claims=[
-            Claim(
+            DraftedClaim(
                 id="c1",
                 text="BM25 is a probabilistic ranking function.",
                 citations=[Citation(chunk_id="ck1", quote="probabilistic ranking function")],
-                status=ClaimStatus.PENDING,
             )
         ]
     )

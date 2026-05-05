@@ -1,7 +1,13 @@
 import pytest
 from langchain_core.documents import Document
 
-from src.schemas.claim_schemas import Citation, Claim, ClaimSet, ClaimStatus
+from src.schemas.claim_schemas import (
+    Citation,
+    Claim,
+    ClaimSet,
+    ClaimStatus,
+    DraftedClaim,
+)
 from src.workflow.claim_pipeline.repair import repair_claims
 
 
@@ -47,11 +53,10 @@ async def test_repair_only_touches_unsupported_claims_and_increments_attempts():
         {
             "bad": ClaimSet(
                 claims=[
-                    Claim(
+                    DraftedClaim(
                         id="c2",
                         text="bad (rewritten)",
                         citations=[Citation(chunk_id="ckN", quote="evidence")],
-                        status=ClaimStatus.PENDING,
                     )
                 ]
             )
