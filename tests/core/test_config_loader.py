@@ -70,3 +70,11 @@ def test_loaded_cors_origins_contains_production_fqdn():
     assert any("azurecontainerapps.io" in o for o in origins), (
         "Production Streamlit UI FQDN must be in the allow-list"
     )
+
+
+def test_claim_pipeline_settings_defaults_loaded():
+    assert settings.claim_pipeline.enabled is False
+    assert settings.claim_pipeline.max_repair_rounds == 1
+    assert settings.claim_pipeline.drafter_max_claims == 12
+    assert settings.claim_pipeline.verify_concurrency == 5
+    assert settings.claim_pipeline.total_budget_seconds == 60

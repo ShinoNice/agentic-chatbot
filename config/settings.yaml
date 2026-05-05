@@ -76,3 +76,12 @@ mcp_settings:
     enabled: true
     db_path: "data/audit/audit.db"
     retention_days: 90                   # 0 = keep forever
+
+# Claim-grounded pipeline (replaces blind retry loop).
+# Flip enabled=true after smoke-test, then delete in cutover commit.
+claim_pipeline:
+  enabled: false
+  max_repair_rounds: 1
+  drafter_max_claims: 12
+  verify_concurrency: 5
+  total_budget_seconds: 60
