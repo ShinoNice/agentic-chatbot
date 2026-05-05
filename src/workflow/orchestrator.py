@@ -39,6 +39,13 @@ class RAGOrchestrator:
             self.llm_engine,
             max_claims=app_settings.claim_pipeline.drafter_max_claims,
         )
+        # Dedicated single-claim drafter for repair: shorter prompt, max 1 claim,
+        # ~5–10s vs the main drafter's ~25-30s. Without this, each repair call
+        # was producing 11–12 unused claims and exhausting the budget.
+        self.repair_drafter = ClaimDrafter(
+            self.llm_engine,
+            single_claim_mode=True,
+        )
         self.claim_verifier = ClaimVerifier(
             self.llm_engine,
             concurrency=app_settings.claim_pipeline.verify_concurrency,
@@ -367,7 +374,7 @@ class RAGOrchestrator:
             question=state["question"],
             claims=state.get("claims") or [],
             chunks=state["documents"],
-            drafter=self.claim_drafter,
+            drafter=self.repair_drafter,
             searcher=self.searcher,
             max_attempts=app_settings.claim_pipeline.max_repair_rounds,
         )

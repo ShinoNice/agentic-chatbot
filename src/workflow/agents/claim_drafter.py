@@ -17,6 +17,19 @@ _SYSTEM = (
     "5. Return AT MOST {max_claims} claims."
 )
 
+_SYSTEM_REPAIR = (
+    "You are repairing a SINGLE prior claim. The user message contains the "
+    "original claim text and a small set of evidence chunks just retrieved "
+    "specifically for it.\n\n"
+    "RULES:\n"
+    "1. Return EXACTLY ONE claim restating the original idea in a form the "
+    "evidence supports — OR return zero claims if the evidence does not "
+    "support it. Do NOT pad with related claims.\n"
+    "2. Use id 'c1'.\n"
+    "3. Cite at least one chunk with a verbatim QUOTE from that chunk.\n"
+    "4. Do NOT fabricate. If no chunk supports the claim, return an empty list."
+)
+
 
 def _format_chunks(chunks: list) -> str:
     if not chunks:
@@ -29,11 +42,25 @@ def _format_chunks(chunks: list) -> str:
 
 
 class ClaimDrafter:
-    """Drafts the answer as a structured ClaimSet using LLM JSON-mode."""
+    """Drafts the answer as a structured ClaimSet using LLM JSON-mode.
 
-    def __init__(self, llm_engine: BaseLLM, max_claims: int = 12):
+    Two modes:
+      - default (single_claim_mode=False): produces up to ``max_claims`` claims
+        for an end-user question; used by ``node_draft_claims``.
+      - single_claim_mode=True: produces exactly 0 or 1 claim, used by repair
+        to restate a specific prior claim against fresh evidence — much shorter
+        prompt and shorter output → ~5–10s vs ~25-30s of the default mode.
+    """
+
+    def __init__(
+        self,
+        llm_engine: BaseLLM,
+        max_claims: int = 12,
+        single_claim_mode: bool = False,
+    ):
         self.engine = llm_engine
-        self.max_claims = max_claims
+        self.max_claims = 1 if single_claim_mode else max_claims
+        self.single_claim_mode = single_claim_mode
         try:
             self.structured_llm = llm_engine.get_model().with_structured_output(ClaimSet)
         except Exception as e:
@@ -44,15 +71,22 @@ class ClaimDrafter:
             logger.info("ClaimDrafter: no chunks; returning empty ClaimSet.")
             return ClaimSet(claims=[])
 
+        if self.single_claim_mode:
+            system_msg = _SYSTEM_REPAIR
+            human_msg = (
+                "ORIGINAL CLAIM: {question}\n\nEVIDENCE CHUNKS:\n{chunks}\n\n"
+                "Return a JSON object matching the ClaimSet schema with EXACTLY "
+                "0 or 1 claims."
+            )
+        else:
+            system_msg = _SYSTEM.format(max_claims=self.max_claims)
+            human_msg = (
+                "QUESTION: {question}\n\nCHUNKS:\n{chunks}\n\n"
+                "Return a JSON object matching the ClaimSet schema."
+            )
+
         prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", _SYSTEM.format(max_claims=self.max_claims)),
-                (
-                    "human",
-                    "QUESTION: {question}\n\nCHUNKS:\n{chunks}\n\n"
-                    "Return a JSON object matching the ClaimSet schema.",
-                ),
-            ]
+            [("system", system_msg), ("human", human_msg)]
         )
         try:
             chain = prompt | self.structured_llm

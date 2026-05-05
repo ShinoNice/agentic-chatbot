@@ -84,4 +84,4 @@ claim_pipeline:
   max_repair_rounds: 1
   drafter_max_claims: 12
   verify_concurrency: 5
-  total_budget_seconds: 60
+  total_budget_seconds: 180
