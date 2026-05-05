@@ -353,7 +353,25 @@ class RAGOrchestrator:
         async for chunk in self.app.astream(initial_state, stream_mode="updates"):
             for node_name, delta in chunk.items():
                 if not isinstance(delta, dict):
-                    continue
+                    # Try to coerce pydantic models / objects with dict()/model_dump()
+                    coerced: dict[str, Any] | None = None
+                    if hasattr(delta, "model_dump"):
+                        try:
+                            coerced = delta.model_dump()
+                        except Exception:
+                            coerced = None
+                    elif hasattr(delta, "dict"):
+                        try:
+                            coerced = delta.dict()
+                        except Exception:
+                            coerced = None
+                    if not isinstance(coerced, dict):
+                        logger.warning(
+                            f"astream_run: dropping non-dict delta from node "
+                            f"{node_name!r} (type={type(delta).__name__})"
+                        )
+                        continue
+                    delta = coerced
                 accumulated.update(delta)
                 extra: dict[str, Any] = {}
                 if node_name == "retrieve":

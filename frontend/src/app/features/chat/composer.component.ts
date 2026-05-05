@@ -23,6 +23,7 @@ import { FormsModule } from '@angular/forms';
         [(ngModel)]="text"
         name="q"
         rows="1"
+        maxlength="4000"
         [disabled]="disabled"
         (input)="autosize()"
         (keydown)="onKey($event)"

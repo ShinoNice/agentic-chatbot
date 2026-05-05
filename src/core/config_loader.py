@@ -1,9 +1,14 @@
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class ConfigError(RuntimeError):
+    """Raised when required configuration is missing or malformed."""
 
 
 class LLMSettings(BaseModel):
@@ -120,20 +125,44 @@ def load_all_configs() -> Settings:
     root_dir = Path(__file__).parent.parent.parent
     config_dir = root_dir / "config"
 
-    with open(config_dir / "settings.yaml") as f:
-        yaml_data = yaml.safe_load(f)
+    settings_path = config_dir / "settings.yaml"
+    if not settings_path.exists():
+        raise FileNotFoundError(
+            f"Required configuration file not found: {settings_path}. "
+            "Ensure config/settings.yaml exists relative to the repo root."
+        )
+    with open(settings_path) as f:
+        yaml_data = yaml.safe_load(f) or {}
 
     prompts = {}
     for prompt_file in (config_dir / "prompts").glob("*.yaml"):
         with open(prompt_file) as f:
             prompts[prompt_file.stem] = yaml.safe_load(f)
 
+    if "model_settings" not in yaml_data:
+        raise ConfigError(
+            f"Missing required key 'model_settings' in {settings_path}."
+        )
+    if "rag_settings" not in yaml_data:
+        raise ConfigError(
+            f"Missing required key 'rag_settings' in {settings_path}."
+        )
+
     docling_data = yaml_data.get("docling_settings", {})
-    app_data = yaml_data.get("app", {})
+    app_data = yaml_data.get("app", {}) or {}
     rerank_data = yaml_data.get("rerank_settings", {})
     mcp_data = yaml_data.get("mcp_settings", {})
     agent_data = yaml_data.get("agent_settings", {})
     upload_data = yaml_data.get("upload_settings", {})
+
+    # Allow CORS origins to be overridden via env (comma-separated). Falls back
+    # to the YAML value when the env var is unset/empty.
+    env_cors = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+    if env_cors:
+        app_data = {
+            **app_data,
+            "cors_origins": [o.strip() for o in env_cors.split(",") if o.strip()],
+        }
 
     return Settings(
         llm=LLMSettings(**yaml_data["model_settings"]),

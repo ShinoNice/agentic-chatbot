@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -91,6 +92,10 @@ class SystemManager:
                         Document(page_content=d["page_content"], metadata=d["metadata"])
                         for d in data
                     )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        f"Skipping malformed JSON cache file {jf}: {e}"
+                    )
                 except Exception as e:
                     logger.warning(f"Skipping corrupt cache file {jf.name}: {e}")
 
@@ -133,7 +138,9 @@ class SystemManager:
         logger.info(f"SystemManager: ingesting {len(pdf_files)} document(s) …")
 
         chunks = self.processor.process(pdf_files)
-        vector_store = self.vector_manager.create_index(chunks, namespace=namespace)
+        vector_store = await asyncio.to_thread(
+            self.vector_manager.create_index, chunks, namespace=namespace
+        )
 
         self.searcher = HybridSearcher(vector_store, documents=chunks, k=self._searcher_k())
         self.orchestrator = RAGOrchestrator(self.searcher)
@@ -184,7 +191,9 @@ class SystemManager:
         if not chunks:
             raise ValueError(f"No content could be extracted from {filename}.")
 
-        vector_store = self.vector_manager.create_index(chunks, namespace=namespace)
+        vector_store = await asyncio.to_thread(
+            self.vector_manager.create_index, chunks, namespace=namespace
+        )
 
         searcher = HybridSearcher(vector_store, documents=chunks, k=self._searcher_k())
         orchestrator = RAGOrchestrator(searcher)

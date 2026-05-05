@@ -11,15 +11,38 @@ import {
 const DEFAULT_BASE = 'http://localhost:8001';
 const STORAGE_KEY = 'agentic-api-base-url';
 
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function loadInitialBaseUrl(): string {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) return DEFAULT_BASE;
+  if (isValidHttpUrl(stored)) return stored;
+  console.warn(
+    '[ApiService] discarding invalid stored baseUrl; falling back to default',
+    stored,
+  );
+  localStorage.removeItem(STORAGE_KEY);
+  return DEFAULT_BASE;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private http = inject(HttpClient);
-  readonly baseUrl = signal<string>(
-    localStorage.getItem(STORAGE_KEY) || DEFAULT_BASE,
-  );
+  readonly baseUrl = signal<string>(loadInitialBaseUrl());
 
   setBaseUrl(url: string): void {
     const cleaned = (url || '').replace(/\/$/, '');
+    if (!isValidHttpUrl(cleaned)) {
+      console.warn('[ApiService] rejected invalid baseUrl', cleaned);
+      return;
+    }
     this.baseUrl.set(cleaned);
     localStorage.setItem(STORAGE_KEY, cleaned);
   }

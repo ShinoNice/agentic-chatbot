@@ -65,7 +65,8 @@ export class RibbonComponent {
   }
 
   verifierBlurb(): string {
-    const v = this.verification!;
+    if (!this.verification) return '';
+    const v = this.verification;
     const u = v.unsupported_claims.length;
     const c = v.contradictions.length;
     const parts: string[] = [];

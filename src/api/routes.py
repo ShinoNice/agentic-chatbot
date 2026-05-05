@@ -23,9 +23,17 @@ from src.api.schemas import (
 )
 from src.core.config_loader import settings
 from src.core.logger import logger
+from src.mcp.client import get_audit_store
 from src.schemas.agent_schemas import RelevanceStatus
 
 router = APIRouter()
+
+# Hard-coded fallback message returned to the user when retrieval finds no
+# relevant context. English-only by design — localization is out of scope for
+# the current product surface.
+FALLBACK_NO_MATCH_ANSWER = (
+    "I couldn't find relevant information in the knowledge base to answer your question."
+)
 
 
 # ── Upload ────────────────────────────────────────────────────────────
@@ -63,6 +71,12 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
+        )
+    # Magic-bytes check: real PDFs always start with "%PDF-".
+    if content[:5] != b"%PDF-":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is not a valid PDF (missing %PDF- header).",
         )
 
     try:
@@ -190,9 +204,7 @@ def _build_chat_response(result: dict[str, Any], session_id: str) -> ChatRespons
         relevance_str = str(rel_status) if rel_status else "UNKNOWN"
 
     if relevance_str == RelevanceStatus.NO_MATCH.value:
-        answer = (
-            "I couldn't find relevant information in the knowledge base to answer your question."
-        )
+        answer = FALLBACK_NO_MATCH_ANSWER
 
     verification_detail = None
     verification = result.get("verification")
@@ -207,12 +219,13 @@ def _build_chat_response(result: dict[str, Any], session_id: str) -> ChatRespons
 
     sources: list[SourceDocument] = []
     for doc in result.get("documents", []):
-        meta = doc.metadata if hasattr(doc, "metadata") else {}
+        meta = getattr(doc, "metadata", {}) or {}
+        page_content = getattr(doc, "page_content", "")
         sources.append(
             SourceDocument(
                 source=meta.get("source", "unknown"),
                 page_number=meta.get("page_number") or meta.get("page"),
-                snippet=doc.page_content[:200] if hasattr(doc, "page_content") else "",
+                snippet=page_content[:200],
             )
         )
 
@@ -281,13 +294,21 @@ async def chat_stream(
             ):
                 if event_type == "result":
                     final = _build_chat_response(payload, session_id)
-                    yield {"event": "result", "data": final.model_dump_json()}
+                    # Yield a dict so the surrounding json.dumps serializes once;
+                    # frontend toStreamEvent parses `data` as a JSON object.
+                    yield {"event": "result", "data": json.dumps(final.model_dump(mode="json"))}
                 else:
                     yield {"event": event_type, "data": json.dumps(payload)}
             yield {"event": "done", "data": "{}"}
         except Exception as exc:
             logger.error(f"Stream failed: {exc}", exc_info=True)
-            yield {"event": "error", "data": json.dumps({"detail": str(exc)})}
+            try:
+                err_data = json.dumps({"detail": str(exc)})
+            except Exception:
+                # Fallback: ensure we always emit a parseable error frame even
+                # if the original payload can't be serialized.
+                err_data = '{"detail":"stream error (unserializable)"}'
+            yield {"event": "error", "data": err_data}
 
     return EventSourceResponse(event_generator())
 
@@ -302,8 +323,6 @@ async def chat_stream(
     summary="Retrieve audit trail for a session",
 )
 async def get_audit(session_id: str):
-    from src.mcp.client import get_audit_store
-
     store = await get_audit_store()
     events = await store.get_trail(session_id)
     if not events:

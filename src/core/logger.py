@@ -43,7 +43,9 @@ def setup_logging():
             logging.config.dictConfig(config)
         except Exception as e:
             logging.basicConfig(level=logging.INFO)
-            print(f"DEBUG: Logging config failed, using basic config. Error: {e}")
+            logging.getLogger(__name__).warning(
+                "Logging config failed, using basic config. Error: %s", e
+            )
     else:
         logging.basicConfig(level=logging.INFO)
 

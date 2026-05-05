@@ -72,7 +72,18 @@ class VectorStoreManager:
                 while not pc.describe_index(self.index_name).status["ready"]:
                     time.sleep(1)
 
-            ids = [doc.metadata.get("chunk_hash") for doc in documents]
+            valid_docs: list[Document] = []
+            ids: list[str] = []
+            for doc in documents:
+                ch = doc.metadata.get("chunk_hash")
+                if not ch:
+                    logger.warning(
+                        "Skipping document with missing chunk_hash "
+                        f"(source={doc.metadata.get('source', 'unknown')!r})."
+                    )
+                    continue
+                valid_docs.append(doc)
+                ids.append(ch)
 
             vector_store = PineconeVectorStore(
                 index_name=self.index_name,
@@ -81,8 +92,8 @@ class VectorStoreManager:
                 pinecone_api_key=self.pc_api_key,
             )
 
-            vector_store.add_documents(documents=documents, ids=ids)
-            logger.info(f"Upserted {len(documents)} docs to Pinecone.")
+            vector_store.add_documents(documents=valid_docs, ids=ids)
+            logger.info(f"Upserted {len(valid_docs)} docs to Pinecone.")
             return vector_store
 
         except Exception as e:

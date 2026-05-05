@@ -60,6 +60,7 @@ type StageState = 'pending' | 'active' | 'done';
 export class PipelineStepperComponent {
   private store = inject(SessionStore);
   readonly stages = STAGES;
+  private warnedNodes = new Set<string>();
 
   readonly visible = computed(() => this.store.streamingStep() !== null);
   readonly iteration = computed(
@@ -71,7 +72,16 @@ export class PipelineStepperComponent {
     if (!step) return 'pending';
     const idx = STAGES.findIndex((s) => s.nodes.includes(step.node));
     const here = STAGES.findIndex((s) => s.key === stageKey);
-    if (idx === -1) return 'pending';
+    if (idx === -1) {
+      if (!this.warnedNodes.has(step.node)) {
+        this.warnedNodes.add(step.node);
+        console.warn(
+          '[PipelineStepper] unknown pipeline node, falling back to pending:',
+          step.node,
+        );
+      }
+      return 'pending';
+    }
     if (here < idx) return 'done';
     if (here === idx) return 'active';
     return 'pending';

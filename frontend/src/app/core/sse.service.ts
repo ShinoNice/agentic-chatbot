@@ -25,8 +25,16 @@ export class SseService {
           });
 
           if (!res.ok || !res.body) {
-            sub.next({ type: 'error', detail: `HTTP ${res.status}` });
-            sub.complete();
+            let bodyText = '';
+            try {
+              bodyText = await res.text();
+            } catch {
+              /* ignore body read errors */
+            }
+            sub.error({
+              status: res.status,
+              detail: bodyText || `HTTP ${res.status}`,
+            });
             return;
           }
 
@@ -49,11 +57,7 @@ export class SseService {
             return [b.slice(0, bestIdx), b.slice(bestIdx + bestLen)];
           };
 
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-
+          const drainBuffer = () => {
             let split = splitFrame(buf);
             while (split) {
               const [raw, rest] = split;
@@ -62,15 +66,34 @@ export class SseService {
               if (evt) sub.next(toStreamEvent(evt));
               split = splitFrame(buf);
             }
+          };
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            drainBuffer();
+          }
+          // Flush trailing decoder bytes and process any remaining buffer.
+          buf += decoder.decode();
+          drainBuffer();
+          if (buf.trim().length) {
+            const evt = parseFrame(buf);
+            if (evt) sub.next(toStreamEvent(evt));
+            buf = '';
           }
           sub.complete();
         } catch (err) {
           if ((err as Error).name !== 'AbortError') {
-            sub.next({ type: 'error', detail: (err as Error).message });
+            sub.error(err);
+          } else {
+            sub.complete();
           }
-          sub.complete();
         }
-      })();
+      })().catch((err) => {
+        // Belt-and-suspenders: anything that escapes the inner try.
+        sub.error(err);
+      });
 
       return () => ac.abort();
     });
@@ -97,8 +120,8 @@ function toStreamEvent(frame: { event: string; data: string }): StreamEvent {
     if (frame.event === 'done') return { type: 'done' };
     if (frame.event === 'error')
       return { type: 'error', detail: data.detail || 'Unknown error' };
-  } catch {
-    /* fallthrough */
+  } catch (err) {
+    console.warn('SSE: bad frame', err, frame);
   }
   return { type: 'error', detail: `Bad frame: ${frame.event}` };
 }

@@ -7,7 +7,10 @@ import {
   signal,
   OnChanges,
   SimpleChanges,
+  DestroyRef,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { ChatMessage, AuditEvent } from '../../models/chat.model';
 import { ApiService } from '../../core/api.service';
@@ -193,6 +196,8 @@ type Tab = 'sources' | 'verification' | 'guardrails' | 'audit';
 export class InspectorComponent implements OnChanges {
   private api = inject(ApiService);
   private store = inject(SessionStore);
+  private destroyRef = inject(DestroyRef);
+  private auditSub: Subscription | null = null;
 
   @Input() msg: ChatMessage | null = null;
   @Output() close = new EventEmitter<void>();
@@ -248,11 +253,26 @@ export class InspectorComponent implements OnChanges {
   loadAudit(): void {
     const sid = this.store.activeId();
     if (!sid) return;
+    // Cancel any in-flight audit request to prevent overlapping responses
+    // from racing each other and to free the connection.
+    if (this.auditSub) {
+      this.auditSub.unsubscribe();
+      this.auditSub = null;
+    }
     this.loadingAudit.set(true);
-    this.api.audit(sid).subscribe((events) => {
-      this.audit.set(events);
-      this.tabs[3].count = events.length;
-      this.loadingAudit.set(false);
-    });
+    this.auditSub = this.api
+      .audit(sid)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (events) => {
+          this.audit.set(events);
+          this.tabs[3].count = events.length;
+          this.loadingAudit.set(false);
+        },
+        error: (e) => {
+          this.loadingAudit.set(false);
+          console.error('inspector: audit load failed', e);
+        },
+      });
   }
 }

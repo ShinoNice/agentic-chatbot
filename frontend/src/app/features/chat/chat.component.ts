@@ -7,7 +7,10 @@ import {
   Output,
   inject,
   signal,
+  DestroyRef,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { SessionStore } from '../../core/session-store.service';
 import { SseService } from '../../core/sse.service';
@@ -106,6 +109,8 @@ import { ChatMessage } from '../../models/chat.model';
 export class ChatComponent implements AfterViewChecked {
   protected store = inject(SessionStore);
   private sse = inject(SseService);
+  private destroyRef = inject(DestroyRef);
+  private currentStream: Subscription | null = null;
 
   @ViewChild('scroll') scrollEl!: ElementRef<HTMLDivElement>;
   @Output() inspect = new EventEmitter<ChatMessage>();
@@ -118,6 +123,12 @@ export class ChatComponent implements AfterViewChecked {
   }
 
   send(text: string): void {
+    // Abort any in-flight stream before starting a new one. The SSE service's
+    // teardown calls AbortController.abort(), which cancels the underlying fetch.
+    if (this.currentStream) {
+      this.currentStream.unsubscribe();
+      this.currentStream = null;
+    }
     if (this.sending()) return;
     const sessionId = this.store.activeId() || this.store.newSession();
     this.sending.set(true);
@@ -137,7 +148,10 @@ export class ChatComponent implements AfterViewChecked {
     });
     this.store.setStreamingStep({ node: 'guardrails_input' });
 
-    this.sse.streamChat(text, sessionId).subscribe({
+    this.currentStream = this.sse
+      .streamChat(text, sessionId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: (ev) => {
         if (ev.type === 'step') {
           this.store.setStreamingStep({
@@ -166,9 +180,13 @@ export class ChatComponent implements AfterViewChecked {
         this.sending.set(false);
         this.store.setStreamingStep(null);
       },
-      error: (err: Error) => {
+      error: (err: unknown) => {
+        const detail =
+          (err as { detail?: string })?.detail ||
+          (err as Error)?.message ||
+          'Stream failed';
         this.store.updateLastMessage({
-          content: `⚠️ ${err.message}`,
+          content: `⚠️ ${detail}`,
           isLoading: false,
           isError: true,
         });

@@ -44,10 +44,11 @@ upload_settings:
 app:
   debug_mode: true
   max_iterations: 3
-  # Lock CORS to known origins. The Azure UI FQDN is the deployed Streamlit
-  # frontend; localhost entries are for host dev (Streamlit + Docker Compose).
+  # Lock CORS to known origins. Production origins should be supplied via the
+  # CORS_ALLOWED_ORIGINS env var (comma-separated) — the loader will replace
+  # this list when that var is set. The defaults below are localhost-only for
+  # host dev (Streamlit + Docker Compose + Angular).
   cors_origins:
-    - "https://ca-chatbot-ui.blacktree-3305419b.northeurope.azurecontainerapps.io"
     - "http://localhost:8501"
     - "http://localhost:8001"
     - "http://localhost:4200"

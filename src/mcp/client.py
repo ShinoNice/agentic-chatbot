@@ -7,9 +7,14 @@ when disabled, calls are no-ops returning safe defaults.
 
 from __future__ import annotations
 
+import asyncio
+import logging
+
 from src.mcp.audit.store import AuditStore
 from src.mcp.guardrails.patterns import scan_text
 from src.schemas.agent_schemas import PIIScanResult, RedactedResult
+
+_logger = logging.getLogger(__name__)
 
 _audit_store: AuditStore | None = None
 
@@ -100,4 +105,19 @@ async def audit_log(
         return None
 
     store = await get_audit_store()
-    return await store.log_event(session_id, event_type, node_name, details)
+    # Audit writes are best-effort; a slow SQLite shouldn't block the request
+    # path. Bound the wait and swallow timeouts with a warning.
+    try:
+        return await asyncio.wait_for(
+            store.log_event(session_id, event_type, node_name, details),
+            timeout=5.0,
+        )
+    except TimeoutError:
+        _logger.warning(
+            "audit_log timed out after 5s (session=%s, event=%s, node=%s); "
+            "continuing without persisting event.",
+            session_id,
+            event_type,
+            node_name,
+        )
+        return None

@@ -141,14 +141,29 @@ export class SessionStore {
         this.newSession();
         return;
       }
-      const parsed = JSON.parse(raw) as PersistedState;
-      this._sessions.set(parsed.sessions || []);
-      this._activeId.set(parsed.activeId);
+      const parsed: unknown = JSON.parse(raw);
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        !Array.isArray((parsed as PersistedState).sessions)
+      ) {
+        console.warn(
+          '[SessionStore] persisted state failed shape check; resetting',
+        );
+        this.newSession();
+        return;
+      }
+      const state = parsed as PersistedState;
+      this._sessions.set(state.sessions);
+      this._activeId.set(
+        typeof state.activeId === 'string' ? state.activeId : null,
+      );
       if (!this._sessions().length) this.newSession();
       else if (!this._sessions().find((s) => s.id === this._activeId())) {
         this._activeId.set(this._sessions()[0].id);
       }
-    } catch {
+    } catch (err) {
+      console.warn('[SessionStore] hydrate failed', err);
       this.newSession();
     }
   }

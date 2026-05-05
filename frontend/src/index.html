@@ -3,6 +3,16 @@
 <head>
   <meta charset="utf-8">
   <title>Agentic RAG Chatbot</title>
+  <!--
+    Conservative CSP for an Angular SPA. Notes:
+    - 'unsafe-inline' on style-src is required for Angular component styles
+      and Tailwind utility injections.
+    - connect-src allows http:/https: so the configurable backend URL works
+      against any host the user enters in the sidebar.
+    - font-src/style-src include Google Fonts (referenced from index.html).
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">

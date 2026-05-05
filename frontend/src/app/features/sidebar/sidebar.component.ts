@@ -1,4 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
@@ -167,6 +169,9 @@ export class SidebarComponent {
   protected store = inject(SessionStore);
   protected api = inject(ApiService);
   protected theme = inject(ThemeService);
+  private destroyRef = inject(DestroyRef);
+  private healthSub: Subscription | null = null;
+  private uploadSub: Subscription | null = null;
 
   collapsed = signal(false);
   uploading = signal(false);
@@ -184,11 +189,19 @@ export class SidebarComponent {
   }
 
   checkHealth(): void {
-    this.api.health().subscribe((res) => {
-      if (!res) this.health.set('down');
-      else if (res.knowledge_base_ready) this.health.set('ok');
-      else this.health.set('partial');
-    });
+    // Cancel any in-flight health check before starting a new one.
+    if (this.healthSub) {
+      this.healthSub.unsubscribe();
+      this.healthSub = null;
+    }
+    this.healthSub = this.api
+      .health()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((res) => {
+        if (!res) this.health.set('down');
+        else if (res.knowledge_base_ready) this.health.set('ok');
+        else this.health.set('partial');
+      });
   }
 
   onPicked(files: FileList | null): void {
@@ -203,22 +216,31 @@ export class SidebarComponent {
   }
 
   private upload(file: File): void {
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
+    const isPdf =
+      file.type === 'application/pdf' ||
+      file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
       this.uploadError.set('PDF only');
       return;
     }
     this.uploadError.set(null);
     this.uploading.set(true);
     const sid = this.store.activeId() || this.store.newSession();
-    this.api.upload(file, sid).subscribe({
-      next: (res) => {
-        this.store.setUpload(res.filename, res.total_chunks);
-        this.uploading.set(false);
-      },
-      error: (err) => {
-        this.uploadError.set(err?.error?.detail || 'Upload failed');
-        this.uploading.set(false);
-      },
-    });
+    if (this.uploadSub) {
+      this.uploadSub.unsubscribe();
+    }
+    this.uploadSub = this.api
+      .upload(file, sid)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (res) => {
+          this.store.setUpload(res.filename, res.total_chunks);
+          this.uploading.set(false);
+        },
+        error: (err) => {
+          this.uploadError.set(err?.error?.detail || 'Upload failed');
+          this.uploading.set(false);
+        },
+      });
   }
 }
