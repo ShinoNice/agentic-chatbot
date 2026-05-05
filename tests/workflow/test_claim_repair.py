@@ -24,6 +24,12 @@ class _FakeSearcher:
                 outer.queries.append(query)
                 return outer.new_chunks
 
+            def invoke(_self, query, **kw):
+                # Sync path used by repair (asyncio.to_thread'd) to dodge
+                # the langchain-pinecone async session bug.
+                outer.queries.append(query)
+                return outer.new_chunks
+
         return _R()
 
 

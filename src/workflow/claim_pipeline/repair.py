@@ -8,9 +8,24 @@ from src.schemas.claim_schemas import Claim, ClaimStatus
 
 
 async def _retrieve_for_claim(searcher, claim: Claim) -> list[Document]:
-    retriever = await searcher.aget_retriever()
-    docs = await retriever.ainvoke(claim.text)
-    return docs or []
+    """Re-retrieve chunks for a single claim.
+
+    Uses the SYNC retriever wrapped in ``asyncio.to_thread`` to dodge a
+    langchain-pinecone bug where ``PineconeAsyncio``'s shared aiohttp
+    ``ClientSession`` is closed after the first ``asimilarity_search``
+    call in a request, causing ``RuntimeError: Session is closed`` on
+    the second similarity search within the same orchestrator run.
+    The sync Pinecone client has stable per-call session lifecycle.
+    On any failure return [] so the redraft step can still run (the
+    drafter will mark the claim unsupported and the loop terminates).
+    """
+    try:
+        retriever = await searcher.aget_retriever()
+        docs = await asyncio.to_thread(retriever.invoke, claim.text)
+        return docs or []
+    except Exception as e:
+        logger.warning(f"repair: re-retrieve failed for claim {claim.id!r}: {e}")
+        return []
 
 
 async def _redraft_one(drafter, claim: Claim, chunks: list[Document]) -> Claim:
