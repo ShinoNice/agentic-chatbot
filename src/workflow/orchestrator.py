@@ -11,11 +11,16 @@ from src.mcp.client import audit_log, guardrails_redact, guardrails_scan
 from src.retrieval.hybrid_search import HybridSearcher, ensure_chunk_ids
 from src.retrieval.reranker import BGEReranker
 from src.schemas.agent_schemas import GuardrailsReport, RelevanceStatus
+from src.schemas.claim_schemas import ClaimStatus
+from src.workflow.agents.claim_drafter import ClaimDrafter
+from src.workflow.agents.claim_verifier import ClaimVerifier
 from src.workflow.agents.relevance_checker import (
     RelevanceCheckerAgent as RelevanceChecker,
 )
 from src.workflow.agents.researcher import ResearchAgent
 from src.workflow.agents.verifier import VerificationAgent
+from src.workflow.claim_pipeline.repair import repair_claims as _repair_claims
+from src.workflow.claim_pipeline.render import render_final_answer
 from src.workflow.memory import AgentState
 
 
@@ -29,6 +34,15 @@ class RAGOrchestrator:
         self.relevance_checker = RelevanceChecker(self.llm_engine)
         self.researcher = ResearchAgent(self.llm_engine)
         self.verifier = VerificationAgent(self.llm_engine)
+
+        self.claim_drafter = ClaimDrafter(
+            self.llm_engine,
+            max_claims=app_settings.claim_pipeline.drafter_max_claims,
+        )
+        self.claim_verifier = ClaimVerifier(
+            self.llm_engine,
+            concurrency=app_settings.claim_pipeline.verify_concurrency,
+        )
 
         self.reranker = (
             BGEReranker(app_settings.rerank.model_name) if app_settings.rerank.enabled else None
@@ -44,29 +58,49 @@ class RAGOrchestrator:
         workflow.add_node("retrieve", self.node_retrieve)
         workflow.add_node("rerank", self.node_rerank)
         workflow.add_node("check_relevance", self.node_check_relevance)
-        workflow.add_node("research", self.node_research)
         workflow.add_node("guardrails_output", self.node_guardrails_output)
-        workflow.add_node("verify", self.node_verify)
 
         workflow.add_edge(START, "guardrails_input")
         workflow.add_edge("guardrails_input", "retrieve")
         workflow.add_edge("retrieve", "rerank")
         workflow.add_edge("rerank", "check_relevance")
 
-        workflow.add_conditional_edges(
-            "check_relevance",
-            self.decide_after_relevance,
-            {"proceed": "research", "stop": END},
-        )
+        if app_settings.claim_pipeline.enabled:
+            workflow.add_node("draft_claims", self.node_draft_claims)
+            workflow.add_node("verify_claims", self.node_verify_claims)
+            workflow.add_node("repair_claims", self.node_repair_claims)
+            workflow.add_node("finalize", self.node_finalize)
 
-        workflow.add_edge("research", "guardrails_output")
-        workflow.add_edge("guardrails_output", "verify")
+            workflow.add_conditional_edges(
+                "check_relevance",
+                self.decide_after_relevance,
+                {"proceed": "draft_claims", "stop": "finalize"},
+            )
+            workflow.add_edge("draft_claims", "guardrails_output")
+            workflow.add_edge("guardrails_output", "verify_claims")
+            workflow.add_conditional_edges(
+                "verify_claims",
+                self.decide_after_claim_verification,
+                {"finalize": "finalize", "repair": "repair_claims"},
+            )
+            workflow.add_edge("repair_claims", "verify_claims")
+            workflow.add_edge("finalize", END)
+        else:
+            workflow.add_node("research", self.node_research)
+            workflow.add_node("verify", self.node_verify)
 
-        workflow.add_conditional_edges(
-            "verify",
-            self.decide_after_verification,
-            {"finalize": END, "retry": "research"},
-        )
+            workflow.add_conditional_edges(
+                "check_relevance",
+                self.decide_after_relevance,
+                {"proceed": "research", "stop": END},
+            )
+            workflow.add_edge("research", "guardrails_output")
+            workflow.add_edge("guardrails_output", "verify")
+            workflow.add_conditional_edges(
+                "verify",
+                self.decide_after_verification,
+                {"finalize": END, "retry": "research"},
+            )
 
         return workflow.compile()
 
@@ -289,6 +323,46 @@ class RAGOrchestrator:
 
         return {"verification": report}
 
+    # -- Claim-grounded pipeline nodes --
+
+    async def node_draft_claims(self, state: AgentState) -> dict[str, Any]:
+        logger.info("--- NODE: DRAFT CLAIMS ---")
+        claim_set = await self.claim_drafter.draft(state["question"], state["documents"])
+        # Mirror text into draft_answer so the existing guardrails_output node has
+        # something to scan.
+        joined = " ".join(c.text for c in claim_set.claims)
+        return {"claims": list(claim_set.claims), "draft_answer": joined}
+
+    async def node_verify_claims(self, state: AgentState) -> dict[str, Any]:
+        logger.info("--- NODE: VERIFY CLAIMS ---")
+        pending = [
+            c for c in (state.get("claims") or []) if c.status == ClaimStatus.PENDING
+        ]
+        verified = await self.claim_verifier.verify(
+            state["question"], pending, state["documents"]
+        )
+        by_id = {c.id: c for c in (state.get("claims") or [])}
+        for c in verified:
+            by_id[c.id] = c
+        return {"claims": list(by_id.values())}
+
+    async def node_repair_claims(self, state: AgentState) -> dict[str, Any]:
+        logger.info("--- NODE: REPAIR CLAIMS ---")
+        updated, augmented = await _repair_claims(
+            question=state["question"],
+            claims=state.get("claims") or [],
+            chunks=state["documents"],
+            drafter=self.claim_drafter,
+            searcher=self.searcher,
+            max_attempts=app_settings.claim_pipeline.max_repair_rounds,
+        )
+        return {"claims": updated, "documents": augmented}
+
+    async def node_finalize(self, state: AgentState) -> dict[str, Any]:
+        logger.info("--- NODE: FINALIZE ---")
+        claims = state.get("claims") or []
+        return {"final_answer": render_final_answer(claims)}
+
     # -- Routing --
 
     def decide_after_relevance(self, state: AgentState) -> str:
@@ -310,6 +384,21 @@ class RAGOrchestrator:
         logger.info(f"Hallucination found (iter {state['iterations']}). Retrying...")
         return "retry"
 
+    def decide_after_claim_verification(self, state: AgentState) -> str:
+        claims = state.get("claims") or []
+        bad = [
+            c
+            for c in claims
+            if c.status in (ClaimStatus.UNSUPPORTED, ClaimStatus.CONTRADICTED)
+        ]
+        repairable = [
+            c for c in bad if c.attempts < app_settings.claim_pipeline.max_repair_rounds
+        ]
+        if repairable:
+            logger.info(f"decide: routing {len(repairable)} claim(s) to repair")
+            return "repair"
+        return "finalize"
+
     async def run(self, question: str, session_id: str = ""):
         """Execute the state machine for a given question."""
         initial_state = {
@@ -319,6 +408,8 @@ class RAGOrchestrator:
             "iterations": 0,
             "guardrails_report": None,
             "audit_session_id": session_id,
+            "claims": None,
+            "final_answer": None,
         }
         result = await self.app.ainvoke(initial_state)
 
@@ -347,6 +438,8 @@ class RAGOrchestrator:
             "iterations": 0,
             "guardrails_report": None,
             "audit_session_id": session_id,
+            "claims": None,
+            "final_answer": None,
         }
 
         accumulated: dict[str, Any] = {}
