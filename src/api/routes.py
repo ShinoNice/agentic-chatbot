@@ -25,6 +25,7 @@ from src.core.config_loader import settings
 from src.core.logger import logger
 from src.mcp.client import get_audit_store
 from src.schemas.agent_schemas import RelevanceStatus
+from src.schemas.claim_schemas import ClaimStatus
 
 router = APIRouter()
 
@@ -195,7 +196,7 @@ async def ingest_documents(
 
 def _build_chat_response(result: dict[str, Any], session_id: str) -> ChatResponse:
     """Translate a raw orchestrator state dict into the wire ChatResponse."""
-    answer = result.get("draft_answer") or "I couldn't generate an answer."
+    answer = result.get("final_answer") or "I couldn't generate an answer."
 
     rel_status = result.get("relevance_status")
     if isinstance(rel_status, RelevanceStatus):
@@ -206,15 +207,31 @@ def _build_chat_response(result: dict[str, Any], session_id: str) -> ChatRespons
     if relevance_str == RelevanceStatus.NO_MATCH.value:
         answer = FALLBACK_NO_MATCH_ANSWER
 
-    verification_detail = None
-    verification = result.get("verification")
-    if verification is not None:
+    # Derive a synthetic VerificationDetail from claims so the frontend's
+    # existing verification UI keeps working post-cutover.
+    raw_claims = result.get("claims") or []
+    # Claims may arrive as Pydantic Claim instances (from .run) or as dicts
+    # (from astream stream_payload). Normalize to (text, status_str) tuples.
+    norm_claims: list[tuple[str, str]] = []
+    for c in raw_claims:
+        if hasattr(c, "status"):
+            status_val = c.status.value if hasattr(c.status, "value") else str(c.status)
+            norm_claims.append((getattr(c, "text", ""), status_val))
+        elif isinstance(c, dict):
+            norm_claims.append((c.get("text", ""), str(c.get("status", ""))))
+
+    verification_detail: VerificationDetail | None = None
+    if norm_claims:
         verification_detail = VerificationDetail(
-            supported=verification.supported,
-            unsupported_claims=verification.unsupported_claims,
-            contradictions=verification.contradictions,
-            relevant=verification.relevant,
-            additional_details=verification.additional_details,
+            supported=all(s == ClaimStatus.VERIFIED.value for _, s in norm_claims),
+            unsupported_claims=[
+                t for t, s in norm_claims if s == ClaimStatus.UNSUPPORTED.value
+            ],
+            contradictions=[
+                t for t, s in norm_claims if s == ClaimStatus.CONTRADICTED.value
+            ],
+            relevant=True,
+            additional_details=None,
         )
 
     sources: list[SourceDocument] = []
@@ -235,7 +252,6 @@ def _build_chat_response(result: dict[str, Any], session_id: str) -> ChatRespons
         relevance_status=relevance_str,
         verification=verification_detail,
         sources=sources,
-        iterations=result.get("iterations", 0),
         guardrails=result.get("guardrails_report"),
     )
 

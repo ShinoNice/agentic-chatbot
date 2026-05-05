@@ -22,12 +22,7 @@ class _Searcher:
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_claim_path_returns_verified_claims(monkeypatch):
-    from src.core import config_loader
-    monkeypatch.setattr(
-        config_loader.settings.claim_pipeline, "enabled", True, raising=False
-    )
-
+async def test_orchestrator_claim_path_returns_verified_claims():
     chunks = [
         Document(
             page_content="BM25 is a probabilistic ranking function.",
@@ -69,29 +64,7 @@ async def test_orchestrator_claim_path_returns_verified_claims(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_legacy_path_still_works_when_flag_off(monkeypatch):
-    """Sanity: with the flag off, the legacy graph segment is still wired.
-
-    Forced off explicitly because the YAML default is now `enabled: true`
-    pending the cutover (T19) that deletes the legacy path entirely.
-    """
-    from src.core import config_loader
-    monkeypatch.setattr(
-        config_loader.settings.claim_pipeline, "enabled", False, raising=False
-    )
-    chunks = [Document(page_content="x", metadata={"chunk_id": "ck1"})]
-    orch = RAGOrchestrator(_Searcher(chunks))
-    nodes = orch.app.get_graph().nodes
-    assert "research" in nodes
-    assert "verify" in nodes
-
-
-@pytest.mark.asyncio
-async def test_astream_emits_claim_events(monkeypatch):
-    from src.core import config_loader
-    monkeypatch.setattr(
-        config_loader.settings.claim_pipeline, "enabled", True, raising=False
-    )
+async def test_astream_emits_claim_events():
     chunks = [Document(page_content="x", metadata={"chunk_id": "ck1"})]
     orch = RAGOrchestrator(_Searcher(chunks))
 
@@ -133,9 +106,6 @@ async def test_astream_emits_claim_events(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_truncates_on_budget(monkeypatch):
     from src.core import config_loader
-    monkeypatch.setattr(
-        config_loader.settings.claim_pipeline, "enabled", True, raising=False
-    )
     monkeypatch.setattr(
         config_loader.settings.claim_pipeline, "total_budget_seconds", 0.01, raising=False
     )

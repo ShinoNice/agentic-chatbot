@@ -51,13 +51,8 @@ class UploadSettings(BaseModel):
 
 
 class ClaimPipelineSettings(BaseModel):
-    """Feature-flagged claim-grounded pipeline.
+    """Claim-grounded pipeline configuration."""
 
-    `enabled=False` keeps the legacy draft/verify/retry loop active.
-    The flag exists for one deploy window; remove with the legacy code.
-    """
-
-    enabled: bool = False
     max_repair_rounds: int = 1
     drafter_max_claims: int = 12
     verify_concurrency: int = 5
@@ -66,7 +61,6 @@ class ClaimPipelineSettings(BaseModel):
 
 class AppSettings(BaseModel):
     debug_mode: bool = True
-    max_iterations: int = 3
     # Default to local dev only; override via settings.yaml / env for prod.
     cors_origins: list[str] = ["http://localhost:8501"]
 

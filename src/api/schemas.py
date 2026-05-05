@@ -49,7 +49,6 @@ class ChatResponse(BaseModel):
     relevance_status: str = Field(description="CAN_ANSWER | PARTIAL | NO_MATCH")
     verification: VerificationDetail | None = None
     sources: list[SourceDocument] = Field(default_factory=list)
-    iterations: int = 0
     guardrails: GuardrailsReport | None = None
 
 

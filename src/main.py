@@ -48,13 +48,9 @@ async def main():
 
             result = await system.query(user_input)
 
-            answer = result.get("draft_answer", "I couldn't generate an answer.")
-            verification = result.get("verification")
+            answer = result.get("final_answer") or "I couldn't generate an answer."
 
             print(f"\rAgent: {answer}")
-
-            if verification and not verification.supported:
-                print("\n[NOTE] This answer may contain unsupported claims.")
 
         except KeyboardInterrupt:
             break

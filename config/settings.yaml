@@ -43,7 +43,6 @@ upload_settings:
 # Application Settings
 app:
   debug_mode: true
-  max_iterations: 3
   # Lock CORS to known origins. Production origins should be supplied via the
   # CORS_ALLOWED_ORIGINS env var (comma-separated) — the loader will replace
   # this list when that var is set. The defaults below are localhost-only for
@@ -77,10 +76,8 @@ mcp_settings:
     db_path: "data/audit/audit.db"
     retention_days: 90                   # 0 = keep forever
 
-# Claim-grounded pipeline (replaces blind retry loop).
-# Flip enabled=true after smoke-test, then delete in cutover commit.
+# Claim-grounded pipeline.
 claim_pipeline:
-  enabled: true
   max_repair_rounds: 1
   drafter_max_claims: 12
   verify_concurrency: 5
