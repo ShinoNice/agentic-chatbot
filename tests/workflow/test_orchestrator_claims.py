@@ -78,3 +78,47 @@ async def test_orchestrator_legacy_path_still_works_when_flag_off():
     nodes = orch.app.get_graph().nodes
     assert "research" in nodes
     assert "verify" in nodes
+
+
+@pytest.mark.asyncio
+async def test_astream_emits_claim_events(monkeypatch):
+    from src.core import config_loader
+    monkeypatch.setattr(
+        config_loader.settings.claim_pipeline, "enabled", True, raising=False
+    )
+    chunks = [Document(page_content="x", metadata={"chunk_id": "ck1"})]
+    orch = RAGOrchestrator(_Searcher(chunks))
+
+    class _Drafter:
+        async def draft(self, q, ch):
+            return ClaimSet(
+                claims=[
+                    Claim(id="c1", text="x", citations=[Citation(chunk_id="ck1", quote="x")])
+                ]
+            )
+
+    class _Verifier:
+        async def verify(self, q, claims, chunks):
+            for c in claims:
+                c.status = ClaimStatus.VERIFIED
+            return claims
+
+    class _Relevance:
+        async def check(self, q, docs):
+            from src.schemas.agent_schemas import RelevanceStatus
+            return RelevanceStatus.CAN_ANSWER
+
+    orch.claim_drafter = _Drafter()
+    orch.claim_verifier = _Verifier()
+    orch.relevance_checker = _Relevance()
+
+    events = [evt async for evt in orch.astream_run("q", session_id="t")]
+    types = [e[0] for e in events]
+    assert "claim_drafted" in types
+    assert "claim_verified" in types
+    assert "result" in types
+    # The result payload should have a string answer and a serialized claims list.
+    result_payload = next(e[1] for e in events if e[0] == "result")
+    assert isinstance(result_payload.get("answer"), str)
+    assert isinstance(result_payload.get("claims"), list)
+    assert result_payload["claims"][0]["status"] == "verified"

@@ -467,6 +467,26 @@ class RAGOrchestrator:
                         continue
                     delta = coerced
                 accumulated.update(delta)
+                # Per-claim events when this delta carries claims.
+                if "claims" in delta and isinstance(delta["claims"], list):
+                    if node_name == "draft_claims":
+                        for claim in delta["claims"]:
+                            yield "claim_drafted", {"claim": claim.model_dump()}
+                    elif node_name == "verify_claims":
+                        for claim in delta["claims"]:
+                            if claim.status != ClaimStatus.PENDING:
+                                yield "claim_verified", {
+                                    "claim_id": claim.id,
+                                    "status": claim.status.value,
+                                    "note": claim.verifier_note,
+                                }
+                    elif node_name == "repair_claims":
+                        for claim in delta["claims"]:
+                            if claim.attempts > 0:
+                                yield "claim_repaired", {
+                                    "claim_id": claim.id,
+                                    "status": claim.status.value,
+                                }
                 extra: dict[str, Any] = {}
                 if node_name == "retrieve":
                     extra["doc_count"] = len(delta.get("candidate_documents") or [])
@@ -477,7 +497,16 @@ class RAGOrchestrator:
                     extra["iteration"] = accumulated.get("iterations", 0)
                 yield "step", {"node": node_name, "status": "completed", **extra}
 
-        yield "result", accumulated
+        result_payload: dict[str, Any] = dict(accumulated)
+        result_payload["answer"] = (
+            accumulated.get("final_answer") or accumulated.get("draft_answer") or ""
+        )
+        if accumulated.get("claims"):
+            result_payload["claims"] = [
+                c.model_dump() if hasattr(c, "model_dump") else c
+                for c in accumulated["claims"]
+            ]
+        yield "result", result_payload
 
         await audit_log(
             session_id,
