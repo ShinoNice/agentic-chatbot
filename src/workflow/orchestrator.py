@@ -331,6 +331,12 @@ class RAGOrchestrator:
         # Mirror text into draft_answer so the existing guardrails_output node has
         # something to scan.
         joined = " ".join(c.text for c in claim_set.claims)
+        await audit_log(
+            state.get("audit_session_id", ""),
+            "claims_drafted",
+            "draft_claims",
+            {"count": len(claim_set.claims), "claim_ids": [c.id for c in claim_set.claims]},
+        )
         return {"claims": list(claim_set.claims), "draft_answer": joined}
 
     async def node_verify_claims(self, state: AgentState) -> dict[str, Any]:
@@ -344,6 +350,12 @@ class RAGOrchestrator:
         by_id = {c.id: c for c in (state.get("claims") or [])}
         for c in verified:
             by_id[c.id] = c
+        await audit_log(
+            state.get("audit_session_id", ""),
+            "claims_verified",
+            "verify_claims",
+            {"results": [{"id": c.id, "status": c.status.value} for c in verified]},
+        )
         return {"claims": list(by_id.values())}
 
     async def node_repair_claims(self, state: AgentState) -> dict[str, Any]:
@@ -355,6 +367,13 @@ class RAGOrchestrator:
             drafter=self.claim_drafter,
             searcher=self.searcher,
             max_attempts=app_settings.claim_pipeline.max_repair_rounds,
+        )
+        repaired = [c for c in updated if c.attempts > 0]
+        await audit_log(
+            state.get("audit_session_id", ""),
+            "claims_repaired",
+            "repair_claims",
+            {"repaired_ids": [c.id for c in repaired]},
         )
         return {"claims": updated, "documents": augmented}
 
