@@ -430,7 +430,27 @@ class RAGOrchestrator:
             "claims": None,
             "final_answer": None,
         }
-        result = await self.app.ainvoke(initial_state)
+        budget = (
+            app_settings.claim_pipeline.total_budget_seconds
+            if app_settings.claim_pipeline.enabled
+            else None
+        )
+        try:
+            if budget:
+                result = await asyncio.wait_for(
+                    self.app.ainvoke(initial_state), timeout=budget
+                )
+            else:
+                result = await self.app.ainvoke(initial_state)
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Run exceeded budget {budget}s; returning truncated state."
+            )
+            result = {
+                **initial_state,
+                "truncated": True,
+                "final_answer": render_final_answer([]),
+            }
 
         await audit_log(
             session_id,
@@ -463,7 +483,21 @@ class RAGOrchestrator:
 
         accumulated: dict[str, Any] = {}
 
+        deadline = (
+            asyncio.get_event_loop().time() + app_settings.claim_pipeline.total_budget_seconds
+            if app_settings.claim_pipeline.enabled
+            else None
+        )
+
         async for chunk in self.app.astream(initial_state, stream_mode="updates"):
+            if deadline and asyncio.get_event_loop().time() > deadline:
+                logger.warning("astream exceeded budget; emitting truncated result.")
+                yield "result", {
+                    **accumulated,
+                    "truncated": True,
+                    "answer": render_final_answer(accumulated.get("claims") or []),
+                }
+                return
             for node_name, delta in chunk.items():
                 if not isinstance(delta, dict):
                     # Try to coerce pydantic models / objects with dict()/model_dump()
