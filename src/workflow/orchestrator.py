@@ -332,3 +332,47 @@ class RAGOrchestrator:
         )
 
         return result
+
+    async def astream_run(self, question: str, session_id: str = ""):
+        """Yield (event_type, payload) tuples as the graph executes.
+
+        Emits ('step', {...}) per node completion so the UI can show progress,
+        then ('result', final_state) once the graph finishes.
+        """
+        initial_state = {
+            "question": question,
+            "candidate_documents": [],
+            "documents": [],
+            "iterations": 0,
+            "guardrails_report": None,
+            "audit_session_id": session_id,
+        }
+
+        accumulated: dict[str, Any] = {}
+
+        async for chunk in self.app.astream(initial_state, stream_mode="updates"):
+            for node_name, delta in chunk.items():
+                if not isinstance(delta, dict):
+                    continue
+                accumulated.update(delta)
+                extra: dict[str, Any] = {}
+                if node_name == "retrieve":
+                    extra["doc_count"] = len(delta.get("candidate_documents") or [])
+                elif node_name == "verify" and "verification" in delta:
+                    report = delta["verification"]
+                    extra["supported"] = bool(getattr(report, "supported", False))
+                elif node_name == "research":
+                    extra["iteration"] = accumulated.get("iterations", 0)
+                yield "step", {"node": node_name, "status": "completed", **extra}
+
+        yield "result", accumulated
+
+        await audit_log(
+            session_id,
+            "answer_delivered",
+            "orchestrator",
+            {
+                "final_status": "answered",
+                "total_iterations": accumulated.get("iterations", 0),
+            },
+        )

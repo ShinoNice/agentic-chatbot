@@ -50,6 +50,7 @@ app:
     - "https://ca-chatbot-ui.blacktree-3305419b.northeurope.azurecontainerapps.io"
     - "http://localhost:8501"
     - "http://localhost:8001"
+    - "http://localhost:4200"
 
 # Reranker Configuration (cross-encoder, lifts Context Precision)
 # Sweep on golden_set_v2 picked candidate_k=30, top_k=10 as the default:
