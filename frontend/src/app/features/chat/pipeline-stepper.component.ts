@@ -14,8 +14,22 @@ const STAGES: Stage[] = [
     label: 'Retrieve',
     nodes: ['guardrails_input', 'retrieve', 'rerank', 'check_relevance'],
   },
-  { key: 'draft', label: 'Draft', nodes: ['research'] },
-  { key: 'verify', label: 'Verify', nodes: ['guardrails_output', 'verify'] },
+  // 'research' is the legacy single-shot drafter; 'draft_claims' is the new
+  // claim-grounded drafter. Both map to the Draft stage during rollout.
+  { key: 'draft', label: 'Draft', nodes: ['research', 'draft_claims'] },
+  {
+    key: 'verify',
+    label: 'Verify',
+    // Legacy: 'guardrails_output' + 'verify'.
+    // New claim pipeline: 'verify_claims', 'repair_claims', 'finalize'.
+    nodes: [
+      'guardrails_output',
+      'verify',
+      'verify_claims',
+      'repair_claims',
+      'finalize',
+    ],
+  },
 ];
 
 type StageState = 'pending' | 'active' | 'done';
