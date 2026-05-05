@@ -77,4 +77,4 @@ def test_claim_pipeline_settings_loaded():
     assert settings.claim_pipeline.max_repair_rounds == 1
     assert settings.claim_pipeline.drafter_max_claims == 12
     assert settings.claim_pipeline.verify_concurrency == 5
-    assert settings.claim_pipeline.total_budget_seconds == 60
+    assert settings.claim_pipeline.total_budget_seconds == 180
