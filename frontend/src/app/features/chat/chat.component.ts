@@ -18,6 +18,7 @@ import { MessageComponent } from './message.component';
 import { ComposerComponent } from './composer.component';
 import { PipelineStepperComponent } from './pipeline-stepper.component';
 import { ChatMessage } from '../../models/chat.model';
+import type { Claim } from '../../core/claim.types';
 
 @Component({
   selector: 'app-chat',
@@ -116,6 +117,7 @@ export class ChatComponent implements AfterViewChecked {
   @Output() inspect = new EventEmitter<ChatMessage>();
 
   sending = signal(false);
+  readonly currentClaims = signal<Claim[]>([]);
 
   ngAfterViewChecked(): void {
     const el = this.scrollEl?.nativeElement;
@@ -132,6 +134,7 @@ export class ChatComponent implements AfterViewChecked {
     if (this.sending()) return;
     const sessionId = this.store.activeId() || this.store.newSession();
     this.sending.set(true);
+    this.currentClaims.set([]);
 
     this.store.addMessage({
       id: this.uid(),
@@ -159,6 +162,7 @@ export class ChatComponent implements AfterViewChecked {
             iteration: ev.iteration,
           });
         } else if (ev.type === 'result') {
+          const finalClaims = ev.payload.claims ?? this.currentClaims();
           this.store.updateLastMessage({
             content: ev.payload.answer,
             sources: ev.payload.sources,
@@ -166,8 +170,29 @@ export class ChatComponent implements AfterViewChecked {
             guardrails: ev.payload.guardrails,
             relevance_status: ev.payload.relevance_status,
             iterations: ev.payload.iterations,
+            claims: finalClaims,
+            truncated: ev.payload.truncated ?? false,
             isLoading: false,
           });
+          this.currentClaims.set([]);
+        } else if (ev.type === 'claim_drafted') {
+          this.currentClaims.update((list) => [...list, ev.claim]);
+        } else if (ev.type === 'claim_verified') {
+          this.currentClaims.update((list) =>
+            list.map((c) =>
+              c.id === ev.claim_id
+                ? { ...c, status: ev.status, verifier_note: ev.note }
+                : c,
+            ),
+          );
+        } else if (ev.type === 'claim_repaired') {
+          this.currentClaims.update((list) =>
+            list.map((c) =>
+              c.id === ev.claim_id
+                ? { ...c, status: ev.status, attempts: c.attempts + 1 }
+                : c,
+            ),
+          );
         } else if (ev.type === 'error') {
           this.store.updateLastMessage({
             content: `⚠️ ${ev.detail}`,
