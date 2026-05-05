@@ -34,12 +34,45 @@ _DEFAULT_MAX_SAMPLES = 10
 _RESULTS_DIR = Path("evaluation/results")
 
 
+def _claim_metrics(result: dict) -> dict:
+    """Compute per-claim verification stats from an orchestrator result."""
+
+    claims = result.get("claims") or []
+    if not claims:
+        return {
+            "total": 0,
+            "verified": 0,
+            "unsupported": 0,
+            "contradicted": 0,
+            "verified_rate": None,
+        }
+
+    def _status(c) -> str:
+        if isinstance(c, dict):
+            return c.get("status", "")
+        s = getattr(c, "status", "")
+        return s.value if hasattr(s, "value") else str(s)
+
+    total = len(claims)
+    verified = sum(1 for c in claims if _status(c) == "verified")
+    unsupported = sum(1 for c in claims if _status(c) == "unsupported")
+    contradicted = sum(1 for c in claims if _status(c) == "contradicted")
+    return {
+        "total": total,
+        "verified": verified,
+        "unsupported": unsupported,
+        "contradicted": contradicted,
+        "verified_rate": verified / total,
+    }
+
+
 async def _collect_samples(
     system: SystemManager,
     raw_data: list[dict],
     max_samples: int,
-) -> list[SingleTurnSample]:
+) -> tuple[list[SingleTurnSample], list[dict]]:
     samples: list[SingleTurnSample] = []
+    per_question_records: list[dict] = []
 
     for idx, item in enumerate(raw_data[:max_samples], start=1):
         question = item["question"]
@@ -61,7 +94,14 @@ async def _collect_samples(
             )
         )
 
-    return samples
+        record: dict = {
+            "question": question,
+            "answer": result.get("draft_answer", "N/A"),
+        }
+        record["claim_metrics"] = _claim_metrics(result)
+        per_question_records.append(record)
+
+    return samples, per_question_records
 
 
 def _build_evaluator_llm():
@@ -71,11 +111,19 @@ def _build_evaluator_llm():
     )
 
 
-def _save_results(result, output_dir: Path) -> Path:
+def _save_results(result, output_dir: Path, per_question_records: list[dict] | None = None) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M")
 
     df = result.to_pandas()
+
+    if per_question_records:
+        claim_metrics_path = output_dir / f"report_{timestamp}_claim_metrics.json"
+        with open(claim_metrics_path, "w", encoding="utf-8") as f:
+            json.dump(per_question_records, f, indent=2)
+        df["claim_metrics"] = [
+            json.dumps(r.get("claim_metrics", {})) for r in per_question_records
+        ]
 
     # Keep question for identification, drop bulky text columns
     score_cols = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
@@ -108,7 +156,7 @@ async def run_evaluation(
         raw_data: list[dict] = json.load(f)
     logger.info("Loaded %d samples from %s", len(raw_data), dataset_path)
 
-    samples = await _collect_samples(system, raw_data, max_samples)
+    samples, per_question_records = await _collect_samples(system, raw_data, max_samples)
 
     evaluator_llm = _build_evaluator_llm()
     metrics = [
@@ -128,7 +176,7 @@ async def run_evaluation(
         raise_exceptions=False,
     )
 
-    report_path = _save_results(result, _RESULTS_DIR)
+    report_path = _save_results(result, _RESULTS_DIR, per_question_records)
     logger.info("Report saved to %s", report_path)
     print(f"\nEvaluation complete. Summary:\n{result}")
 
