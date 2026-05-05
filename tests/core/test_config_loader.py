@@ -72,8 +72,10 @@ def test_loaded_cors_origins_contains_production_fqdn():
     )
 
 
-def test_claim_pipeline_settings_defaults_loaded():
-    assert settings.claim_pipeline.enabled is False
+def test_claim_pipeline_settings_loaded():
+    # `enabled` is the only field that flips during rollout; assert the
+    # other knobs match the YAML defaults.
+    assert isinstance(settings.claim_pipeline.enabled, bool)
     assert settings.claim_pipeline.max_repair_rounds == 1
     assert settings.claim_pipeline.drafter_max_claims == 12
     assert settings.claim_pipeline.verify_concurrency == 5

@@ -80,7 +80,7 @@ mcp_settings:
 # Claim-grounded pipeline (replaces blind retry loop).
 # Flip enabled=true after smoke-test, then delete in cutover commit.
 claim_pipeline:
-  enabled: false
+  enabled: true
   max_repair_rounds: 1
   drafter_max_claims: 12
   verify_concurrency: 5

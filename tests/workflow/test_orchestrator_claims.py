@@ -69,12 +69,18 @@ async def test_orchestrator_claim_path_returns_verified_claims(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_legacy_path_still_works_when_flag_off():
-    """Sanity: with the flag off, the existing graph path still completes."""
+async def test_orchestrator_legacy_path_still_works_when_flag_off(monkeypatch):
+    """Sanity: with the flag off, the legacy graph segment is still wired.
+
+    Forced off explicitly because the YAML default is now `enabled: true`
+    pending the cutover (T19) that deletes the legacy path entirely.
+    """
+    from src.core import config_loader
+    monkeypatch.setattr(
+        config_loader.settings.claim_pipeline, "enabled", False, raising=False
+    )
     chunks = [Document(page_content="x", metadata={"chunk_id": "ck1"})]
     orch = RAGOrchestrator(_Searcher(chunks))
-    # Don't enable the flag. We don't invoke .run() (it'd hit a real LLM); we
-    # just assert the build succeeded with the legacy segment.
     nodes = orch.app.get_graph().nodes
     assert "research" in nodes
     assert "verify" in nodes
