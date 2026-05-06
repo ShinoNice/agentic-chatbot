@@ -26,22 +26,8 @@ services:
       retries: 5
       start_period: 120s
 
-  # ─── Streamlit UI ───────────────────────────────────────────────────────────
-  ui:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: agentic-chatbot-ui
-    command: streamlit run ui/streamlit_frontend.py --server.port 8501 --server.address 0.0.0.0
-    ports:
-      - "8501:8501"
-    env_file:
-      - .env
-    environment:
-      # Inside the compose network, reach the api container by service name.
-      # Overrides the frontend's default of http://localhost:8001.
-      - API_BASE_URL=http://api:8001
-    depends_on:
-      api:
-        condition: service_healthy
-    restart: unless-stopped
+  # The Angular UI is not part of compose. Run it for local dev with:
+  #   cd frontend && npm start
+  # (or `make ui`). It defaults to talking to http://localhost:8001 which
+  # this compose's `api` service exposes — no proxy / no nginx needed
+  # for dev. Prod uses the standalone frontend/Dockerfile via Terraform.

@@ -11,7 +11,7 @@ api:
 	uvicorn src.api.app:app --reload --port 8001
 
 ui:
-	streamlit run ui/streamlit_frontend.py --server.port 8501
+	cd frontend && npm start
 
 chat:
 	python -m src.main

@@ -60,16 +60,16 @@ def test_agent_settings_default_context_cap_is_reasonable():
     assert 4_000 <= a.max_verifier_context_chars <= 32_000
 
 
-def test_loaded_cors_origins_contains_production_fqdn():
-    """The committed settings.yaml includes the deployed Azure UI origin.
+def test_loaded_cors_origins_no_wildcard():
+    """The committed settings.yaml never has a wildcard CORS origin.
 
-    Guards against accidental reverts to "*" or removal of the prod origin.
+    The prod UI hits the API same-origin via the nginx /api/ proxy, so
+    no prod FQDN is required in the allow-list anymore. CORS only
+    matters for local dev (Angular on :4200 → API on :8001), which is
+    why localhost entries are present.
     """
     origins = settings.app.cors_origins
     assert "*" not in origins, "CORS must not be wildcard in committed config"
-    assert any("azurecontainerapps.io" in o for o in origins), (
-        "Production Streamlit UI FQDN must be in the allow-list"
-    )
 
 
 def test_claim_pipeline_settings_loaded():
