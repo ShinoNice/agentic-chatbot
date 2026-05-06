@@ -12,15 +12,23 @@
 set -eu
 
 API_BASE_URL="${API_BASE_URL:-}"
+# Full internal FQDN of the upstream API container app. In prod this comes
+# from Terraform (azurerm_container_app_environment.aca.default_domain).
+# Locally (no ACA DNS) the nginx /api/ block won't be reachable anyway.
+API_UPSTREAM="${API_UPSTREAM:-localhost:8001}"
 
 INDEX="/usr/share/nginx/html/index.html"
+NGINX_CONF="/etc/nginx/conf.d/default.conf"
 
-if [ ! -f "$INDEX" ]; then
-    echo "[entrypoint] $INDEX missing; image is broken" >&2
-    exit 1
-fi
+for f in "$INDEX" "$NGINX_CONF"; do
+    if [ ! -f "$f" ]; then
+        echo "[entrypoint] $f missing; image is broken" >&2
+        exit 1
+    fi
+done
 
-# Use a delimiter unlikely to appear in URLs (|).
+# Substitute placeholders. `|` delimiter avoids escaping URLs/hostnames.
 sed -i "s|__API_BASE_URL__|${API_BASE_URL}|g" "$INDEX"
+sed -i "s|__API_UPSTREAM__|${API_UPSTREAM}|g" "$NGINX_CONF"
 
-echo "[entrypoint] runtime config injected (API_BASE_URL='${API_BASE_URL}')"
+echo "[entrypoint] runtime config injected (API_BASE_URL='${API_BASE_URL}', API_UPSTREAM='${API_UPSTREAM}')"
