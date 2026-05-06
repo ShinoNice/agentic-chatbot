@@ -16,18 +16,22 @@ const BADGE: Record<ClaimStatus, { glyph: string; cls: string; title: string }> 
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="claim-stream">
-      <p class="claim-prose">
-        @for (c of claims(); track c.id; let last = $last) {<span
-          class="claim"
-          [attr.data-status]="c.status"
-        ><span class="claim-text">{{ c.text }}</span><sup
-          class="claim-badge"
-          [class]="badge(c.status).cls"
-          [title]="hoverText(c)"
-          [attr.aria-label]="hoverText(c)"
-          tabindex="0"
-        >({{ badge(c.status).glyph }})</sup></span>@if (!last) {{{ ' ' }}}}
-      </p>
+      <ul class="claim-list">
+        @for (c of claims(); track c.id) {
+          <li
+            class="claim-item"
+            [attr.data-status]="c.status"
+            [title]="hoverText(c)"
+          >
+            <span
+              class="claim-marker"
+              [class]="badge(c.status).cls"
+              [attr.aria-label]="badge(c.status).title"
+            >{{ badge(c.status).glyph }}</span>
+            <span class="claim-text">{{ c.text }}</span>
+          </li>
+        }
+      </ul>
       @if (anyUnsupported()) {
         <p class="claim-banner" role="status">
           ⚠ Some statements above were not supported by the retrieved sources.
@@ -36,36 +40,47 @@ const BADGE: Record<ClaimStatus, { glyph: string; cls: string; title: string }> 
     </div>
   `,
   styles: [`
-    .claim-stream { line-height: 1.7; }
-    .claim-prose {
+    .claim-stream { line-height: 1.5; }
+    .claim-list {
+      list-style: none;
+      padding: 0;
       margin: 0;
-      text-align: left;
-      hyphens: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
     }
-    .claim { display: inline; }
-    .claim-text {
-      /* Subtle underline-on-hover signals the badge that follows is a citation. */
-    }
-    .claim:hover .claim-text {
-      background: rgba(255, 255, 255, 0.025);
-      border-radius: 2px;
-    }
-    /* Footnote-style superscript: small parens around a status glyph,
-       sitting just above baseline without stretching line-height. */
-    .claim-badge {
-      font-size: 0.62em;
-      line-height: 0;
-      margin-left: 0.15em;
+    .claim-item {
+      display: grid;
+      grid-template-columns: 1.1rem 1fr;
+      gap: 0.55rem;
+      align-items: baseline;
       cursor: help;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0.02em;
-      user-select: none;
+      padding: 0.15rem 0;
+      border-radius: 4px;
+      transition: background 120ms ease;
     }
-    .claim-badge:focus { outline: 1px dotted currentColor; outline-offset: 2px; }
-    .badge-ok   { color: #4ade80; }   /* green-400 — readable on dark */
-    .badge-warn { color: #fbbf24; }   /* amber-400 */
-    .badge-err  { color: #f87171; }   /* red-400 */
-    .badge-mute { color: #9ca3af; }   /* gray-400 */
+    .claim-item:hover { background: rgba(255, 255, 255, 0.03); }
+    .claim-marker {
+      font-size: 0.85em;
+      line-height: 1.4;
+      text-align: center;
+      user-select: none;
+      font-weight: 600;
+    }
+    .claim-text { color: inherit; }
+    .badge-ok   { color: #4ade80; }
+    .badge-warn { color: #fbbf24; }
+    .badge-err  { color: #f87171; }
+    .badge-mute { color: #9ca3af; }
+    /* Subtle left-edge tint reinforces status without dominating the row. */
+    .claim-item[data-status="unsupported"] {
+      box-shadow: inset 2px 0 0 rgba(251, 191, 36, 0.5);
+      padding-left: 0.4rem;
+    }
+    .claim-item[data-status="contradicted"] {
+      box-shadow: inset 2px 0 0 rgba(248, 113, 113, 0.6);
+      padding-left: 0.4rem;
+    }
     .claim-banner {
       margin: 0.75rem 0 0;
       font-size: 0.85em;
