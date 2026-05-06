@@ -6,6 +6,13 @@ locals {
   # Internal DNS the UI uses to reach the API inside the ACA env.
   api_internal_url = "http://${local.api_app_name}"
 
+  # Full internal FQDN for ACA's host-based ingress routing. Short names
+  # resolve via injected DNS, but ACA's internal ingress only recognizes
+  # requests whose Host header is the full <app>.internal.<env-default-domain>
+  # form. nginx in the UI container needs both the upstream hostname AND
+  # the matching Host header — both are this same FQDN.
+  api_internal_fqdn = "${local.api_app_name}.internal.${azurerm_container_app_environment.aca.default_domain}"
+
   # Versionless KV secret IDs — ACA resolves the latest version on each
   # replica refresh, mirroring the Bicep keyVaultUrl behavior.
   openai_kv_secret_id    = "${data.azurerm_key_vault.kv.vault_uri}secrets/OPENAI-API-KEY"
@@ -181,6 +188,14 @@ resource "azurerm_container_app" "ui" {
         # Empty string = same-origin. nginx /api/ block proxies through to
         # the api container, so the browser does not need a backend URL.
         value = ""
+      }
+      env {
+        # Full internal FQDN of the api container app. Consumed by the
+        # entrypoint.sh to substitute __API_UPSTREAM__ in the nginx config
+        # (both proxy_pass target AND the Host header — ACA's internal
+        # ingress is host-based and only recognizes the full FQDN).
+        name  = "API_UPSTREAM"
+        value = local.api_internal_fqdn
       }
     }
   }
