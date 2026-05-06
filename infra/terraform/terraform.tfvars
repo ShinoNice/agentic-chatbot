@@ -1,0 +1,8 @@
+location          = "northeurope"
+name_prefix       = "chatbot"
+acr_name          = "acrhybridchatbot"
+key_vault_name    = "kv-hybrid-chatbot"
+image_tag         = "v5"
+cpu               = "1.0"
+memory            = "2.0Gi"
+langsmith_project = "Agentic_Chatbot"

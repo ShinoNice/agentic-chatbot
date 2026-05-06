@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 import { ChatResponse, StreamEvent } from '../models/chat.model';
+import type { Claim, ClaimStatus } from './claim.types';
 
 @Injectable({ providedIn: 'root' })
 export class SseService {
@@ -120,6 +121,21 @@ function toStreamEvent(frame: { event: string; data: string }): StreamEvent {
     if (frame.event === 'done') return { type: 'done' };
     if (frame.event === 'error')
       return { type: 'error', detail: data.detail || 'Unknown error' };
+    if (frame.event === 'claim_drafted')
+      return { type: 'claim_drafted', claim: data.claim as Claim };
+    if (frame.event === 'claim_verified')
+      return {
+        type: 'claim_verified',
+        claim_id: data.claim_id as string,
+        status: data.status as ClaimStatus,
+        note: (data.note ?? null) as string | null,
+      };
+    if (frame.event === 'claim_repaired')
+      return {
+        type: 'claim_repaired',
+        claim_id: data.claim_id as string,
+        status: data.status as ClaimStatus,
+      };
   } catch (err) {
     console.warn('SSE: bad frame', err, frame);
   }

@@ -5,8 +5,8 @@ from langchain_core.documents import Document
 from src.schemas.agent_schemas import (
     GuardrailsReport,
     RelevanceStatus,
-    VerificationReport,
 )
+from src.schemas.claim_schemas import Claim
 
 
 def merge_documents(old_docs: list[Document], new_docs: list[Document]) -> list[Document]:
@@ -32,9 +32,8 @@ class AgentState(TypedDict):
     # harmless. Left in place to avoid touching unrelated behavior.
     documents: Annotated[list[Document], merge_documents]
     relevance_status: RelevanceStatus
-    draft_answer: str | None
-    verification: VerificationReport | None
-    iterations: int
     error: str | None
     guardrails_report: GuardrailsReport | None
     audit_session_id: str
+    claims: list[Claim] | None
+    final_answer: str | None

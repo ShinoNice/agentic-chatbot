@@ -1,0 +1,19 @@
+# Terraform local state and provider cache
+.terraform/
+.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Backend config files (contain account names; init via flags or local file)
+*.tfbackend
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Override files (per-environment local overrides)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

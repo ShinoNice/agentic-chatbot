@@ -1,34 +1,33 @@
 name: Deploy to Azure
 
-# Continuous deployment to Azure Container Apps.
+# Continuous deployment to Azure Container Apps via Terraform.
 #
 # Triggers:
-#   - push to main (automatic)
 #   - manual workflow_dispatch (override imageTag if you need to roll back)
 #
 # Preconditions (one-time setup):
-#   1. Create an Entra ID app registration, give its service principal
-#      Contributor on the RG and AcrPush on the ACR.
-#   2. Add a federated credential on the app registration scoped to
+#   1. Entra ID app registration with a federated credential scoped to
 #      repo:ShinoNice/agentic-chatbot:ref:refs/heads/main
-#   3. Add repo secrets:
+#   2. Service principal granted: Contributor on rg-agentic-chatbot,
+#      AcrPush on the ACR, Storage Blob Data Contributor on the
+#      Terraform state storage account.
+#   3. Repo secrets:
 #        AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
-#      Add repo vars:
-#        AZURE_RG=rg-agentic-chatbot, ACR_NAME=acrhybridchatbot
+#      Repo vars:
+#        AZURE_RG=rg-agentic-chatbot
+#        ACR_NAME=acrhybridchatbot
+#        TF_BACKEND_RG=rg-tfstate-agentic-chatbot
+#        TF_BACKEND_SA=sttfstateagenticchatbot   (must be globally unique)
+#        TF_BACKEND_CONTAINER=tfstate
+#   4. State backend bootstrap (one-off): see infra/terraform/README.md.
+#
+# Until OIDC + state backend exist, fire on every push to main just produces
+# a red X. Keep this on workflow_dispatch only; once everything is wired,
+# add:
+#   push:
+#     branches: [main]
 
 on:
-  # Manual-only until Azure OIDC is wired up.
-  #
-  # This workflow needs the following to actually succeed:
-  #   - Entra app registration with a federated credential for this repo
-  #   - Repo secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
-  #   - Repo vars:    AZURE_RG, ACR_NAME
-  #
-  # Until those exist, firing on every push to main just produces a red X
-  # that fails at the `az login` step after a few seconds. Keep this on
-  # workflow_dispatch only; once Azure is wired, add:
-  #   push:
-  #     branches: [main]
   workflow_dispatch:
     inputs:
       imageTag:
@@ -48,6 +47,11 @@ env:
   AZURE_RG: ${{ vars.AZURE_RG }}
   ACR_NAME: ${{ vars.ACR_NAME }}
   IMAGE_TAG: ${{ inputs.imageTag || github.sha }}
+  # Terraform reads OIDC creds from these specific env var names.
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC: 'true'
 
 jobs:
   build-and-push:
@@ -71,73 +75,120 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Both apps share the same image (single Dockerfile). Tag twice so the
-      # Bicep reference to chatbot-api:<tag> and chatbot-ui:<tag> both resolve.
-      - name: Build and push images
+      # api: FastAPI/Python image, root Dockerfile.
+      - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile
           push: true
           tags: |
             ${{ env.ACR_NAME }}.azurecr.io/chatbot-api:${{ env.IMAGE_TAG }}
-            ${{ env.ACR_NAME }}.azurecr.io/chatbot-ui:${{ env.IMAGE_TAG }}
             ${{ env.ACR_NAME }}.azurecr.io/chatbot-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      # ui: Angular SPA + nginx, frontend/Dockerfile.
+      - name: Build and push UI image (Angular)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/chatbot-ui:${{ env.IMAGE_TAG }}
             ${{ env.ACR_NAME }}.azurecr.io/chatbot-ui:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=ui
+          cache-to: type=gha,mode=max,scope=ui
 
   deploy:
-    name: Deploy Bicep
+    name: Deploy Terraform
     runs-on: ubuntu-latest
     needs: build-and-push
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: infra/terraform
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Azure login (OIDC)
-        uses: azure/login@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          terraform_version: 1.15.1
+          terraform_wrapper: false
 
-      - name: What-if (dry-run summary)
-        run: |
-          az deployment group what-if \
-            --resource-group "${{ env.AZURE_RG }}" \
-            --template-file infra/main.bicep \
-            --parameters @infra/main.parameters.json \
-            --parameters imageTag=${{ env.IMAGE_TAG }} \
-            --no-pretty-print
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
 
-      - name: Deploy
-        id: deploy
+      - name: Terraform init
         run: |
-          az deployment group create \
-            --resource-group "${{ env.AZURE_RG }}" \
-            --template-file infra/main.bicep \
-            --parameters @infra/main.parameters.json \
-            --parameters imageTag=${{ env.IMAGE_TAG }} \
-            --query 'properties.outputs.uiPublicUrl.value' \
-            --output tsv
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_BACKEND_RG }}" \
+            -backend-config="storage_account_name=${{ vars.TF_BACKEND_SA }}" \
+            -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=agentic-chatbot.tfstate"
+
+      - name: Terraform validate
+        run: terraform validate -no-color
+
+      - name: Terraform plan
+        id: plan
+        run: |
+          terraform plan \
+            -input=false \
+            -no-color \
+            -var "image_tag=${{ env.IMAGE_TAG }}" \
+            -out=tfplan
+        continue-on-error: false
+
+      - name: Terraform apply
+        id: apply
+        run: |
+          terraform apply \
+            -input=false \
+            -no-color \
+            -auto-approve \
+            tfplan
+
+      - name: Read deploy outputs
+        id: outputs
+        run: |
+          UI_URL=$(terraform output -raw ui_public_url)
+          echo "ui_url=$UI_URL" >> "$GITHUB_OUTPUT"
+          echo "UI URL: $UI_URL"
 
       - name: Smoke-test public UI
         run: |
-          URL=$(az deployment group show \
-            --resource-group "${{ env.AZURE_RG }}" \
-            --name main \
-            --query 'properties.outputs.uiPublicUrl.value' \
-            --output tsv)
-          echo "UI URL: $URL"
-          # Streamlit returns 200 on / once the server is up; retry a few times.
+          URL='${{ steps.outputs.outputs.ui_url }}'
+          # Three checks: nginx 200, Angular bundle served (<app-root>),
+          # and the runtime config script was injected.
           for i in 1 2 3 4 5; do
-            if curl -fsS "$URL" > /dev/null; then
-              echo "UI reachable."
+            BODY=$(curl -fsS "$URL" 2>/dev/null) && \
+              echo "$BODY" | grep -q '<app-root>' && \
+              echo "$BODY" | grep -q '__APP_CONFIG__' && {
+                echo "UI reachable, Angular bundle present, runtime config injected."
+                exit 0
+              }
+            echo "Attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          echo "UI smoke test failed."
+          exit 1
+
+      - name: Smoke-test API proxy
+        run: |
+          URL='${{ steps.outputs.outputs.ui_url }}'
+          # The Angular UI nginx proxies /api/* to the api container.
+          # /api/health should return 200 with a JSON body.
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$URL/api/health" | grep -q '"status"'; then
+              echo "API proxy reachable through UI host."
               exit 0
             fi
             echo "Attempt $i failed, retrying in 15s..."
             sleep 15
           done
-          echo "UI smoke test failed."
+          echo "API proxy smoke test failed."
           exit 1

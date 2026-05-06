@@ -133,7 +133,7 @@ def test_chat_uses_session_orchestrator_when_present(client, patched_system):
     session_orch = MagicMock()
     session_orch.run = AsyncMock(
         return_value={
-            "draft_answer": "from session orchestrator",
+            "final_answer": "from session orchestrator",
             "relevance_status": "CAN_ANSWER",
             "documents": [],
             "iterations": 1,
@@ -144,7 +144,7 @@ def test_chat_uses_session_orchestrator_when_present(client, patched_system):
     # Default orchestrator returns something different so we can tell them apart.
     patched_system.orchestrator.run = AsyncMock(
         return_value={
-            "draft_answer": "from default orchestrator",
+            "final_answer": "from default orchestrator",
             "relevance_status": "CAN_ANSWER",
             "documents": [],
             "iterations": 1,
@@ -165,7 +165,7 @@ def test_chat_falls_back_to_default_without_session_upload(client, patched_syste
     """Chat without an uploaded-doc session uses the default curated orchestrator."""
     patched_system.orchestrator.run = AsyncMock(
         return_value={
-            "draft_answer": "from default orchestrator",
+            "final_answer": "from default orchestrator",
             "relevance_status": "CAN_ANSWER",
             "documents": [],
             "iterations": 1,

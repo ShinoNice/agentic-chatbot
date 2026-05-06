@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { ChatMessage } from '../../models/chat.model';
 import { MarkdownService } from '../../core/markdown.service';
 import { RibbonComponent } from './ribbon.component';
+import { ClaimRendererComponent } from './claim-renderer.component';
 
 @Component({
   selector: 'app-message',
   standalone: true,
-  imports: [CommonModule, RibbonComponent],
+  imports: [CommonModule, RibbonComponent, ClaimRendererComponent],
   template: `
     <div
       class="animate-msg-in flex gap-3"
@@ -50,8 +51,13 @@ import { RibbonComponent } from './ribbon.component';
               <div
                 class="md-body rounded-2xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 text-zinc-100"
                 [style.borderColor]="msg.isError ? 'rgba(244,63,94,0.4)' : ''"
-                [innerHTML]="rendered"
-              ></div>
+              >
+                @if (msg.claims && msg.claims.length > 0) {
+                  <app-claim-renderer [claims]="msg.claims" />
+                } @else {
+                  <div [innerHTML]="rendered"></div>
+                }
+              </div>
               <div
                 class="flex items-center gap-3 text-[10px] text-zinc-500 font-mono"
               >

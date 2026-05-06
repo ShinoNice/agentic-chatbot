@@ -1,4 +1,4 @@
-"""Unit tests for the three LangGraph agents.
+"""Unit tests for the LangGraph agents.
 
 The LLM is mocked end-to-end: no OpenAI calls, no network. Each test
 pins a specific failure mode or branch so regressions surface loudly.
@@ -6,7 +6,7 @@ pins a specific failure mode or branch so regressions surface loudly.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.documents import Document
@@ -15,11 +15,8 @@ from langchain_core.runnables import RunnableLambda
 from src.schemas.agent_schemas import (
     RelevanceResponse,
     RelevanceStatus,
-    VerificationReport,
 )
 from src.workflow.agents.relevance_checker import RelevanceCheckerAgent
-from src.workflow.agents.researcher import ResearchAgent
-from src.workflow.agents.verifier import VerificationAgent
 
 # ── Shared helpers ────────────────────────────────────────────────────
 
@@ -99,101 +96,3 @@ async def test_relevance_checker_returns_no_match_on_llm_error(docs):
     assert result == RelevanceStatus.NO_MATCH
 
 
-# ── VerificationAgent ────────────────────────────────────────────────
-
-
-async def test_verifier_returns_supported_report(docs):
-    """Supported=true report round-trips through the agent unchanged."""
-    report = VerificationReport(
-        supported=True,
-        unsupported_claims=[],
-        contradictions=[],
-        relevant=True,
-    )
-    llm, _ = _fake_llm_with_structured_output(report)
-    agent = VerificationAgent(llm)
-    agent.structured_llm = _chain_returning(report)
-
-    result = await agent.verify("q", "answer", docs)
-    assert result.supported is True
-    assert result.relevant is True
-
-
-async def test_verifier_surfaces_hallucinations(docs):
-    """Unsupported claims + contradictions come through faithfully."""
-    report = VerificationReport(
-        supported=False,
-        unsupported_claims=["claim X"],
-        contradictions=["claim Y vs doc 1"],
-        relevant=True,
-    )
-    llm, _ = _fake_llm_with_structured_output(report)
-    agent = VerificationAgent(llm)
-    agent.structured_llm = _chain_returning(report)
-
-    result = await agent.verify("q", "answer", docs)
-    assert result.supported is False
-    assert result.unsupported_claims == ["claim X"]
-    assert result.contradictions == ["claim Y vs doc 1"]
-
-
-async def test_verifier_returns_unsupported_on_empty_answer():
-    """An empty draft answer skips the LLM call and returns unsupported/relevant=False."""
-    llm, _ = _fake_llm_with_structured_output(None)
-    agent = VerificationAgent(llm)
-
-    result = await agent.verify("q", "", [])
-    assert result.supported is False
-    assert result.relevant is False
-
-
-async def test_verifier_degrades_gracefully_on_chain_error(docs):
-    """Chain exception yields an unsupported report with an error note, not a raise."""
-    llm, _ = _fake_llm_with_structured_output(None)
-    agent = VerificationAgent(llm)
-    agent.structured_llm = _chain_raising(RuntimeError("LLM down"))
-
-    result = await agent.verify("q", "some answer", docs)
-    assert result.supported is False
-    assert result.additional_details is not None
-
-
-# ── ResearchAgent ────────────────────────────────────────────────────
-
-
-async def test_researcher_returns_fallback_on_empty_docs():
-    """Zero documents → canned 'I couldn't find anything' response, no LLM call."""
-    llm = MagicMock()
-    llm.generate = AsyncMock(return_value="should not be called")
-    agent = ResearchAgent(llm)
-
-    result = await agent.generate("q?", [])
-    assert "couldn't find" in result.lower()
-    llm.generate.assert_not_called()
-
-
-async def test_researcher_generates_with_context(docs):
-    """With documents, the agent calls the LLM and returns its answer."""
-    llm = MagicMock()
-    llm.generate = AsyncMock(return_value="Alpha and beta are related.")
-    agent = ResearchAgent(llm)
-
-    result = await agent.generate("What is alpha?", docs)
-    assert result == "Alpha and beta are related."
-    llm.generate.assert_awaited_once()
-    # Verify the prompt actually saw both document contents.
-    call_kwargs = llm.generate.call_args.kwargs
-    assert "alpha content" in call_kwargs["user_prompt"]
-    assert "beta content" in call_kwargs["user_prompt"]
-
-
-async def test_researcher_raises_on_empty_llm_response(docs):
-    """Too-short LLM output is treated as a provider failure."""
-    from src.core.exceptions import LLMResponseError
-
-    llm = MagicMock()
-    llm.generate = AsyncMock(return_value="hi")  # below _MIN_ANSWER_LENGTH of 5
-    agent = ResearchAgent(llm)
-
-    with pytest.raises(LLMResponseError):
-        await agent.generate("q", docs)

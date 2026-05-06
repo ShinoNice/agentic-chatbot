@@ -50,9 +50,17 @@ class UploadSettings(BaseModel):
         return self.max_size_mib * 1024 * 1024
 
 
+class ClaimPipelineSettings(BaseModel):
+    """Claim-grounded pipeline configuration."""
+
+    max_repair_rounds: int = 1
+    drafter_max_claims: int = 12
+    verify_concurrency: int = 5
+    total_budget_seconds: int = 60
+
+
 class AppSettings(BaseModel):
     debug_mode: bool = True
-    max_iterations: int = 3
     # Default to local dev only; override via settings.yaml / env for prod.
     cors_origins: list[str] = ["http://localhost:8501"]
 
@@ -111,6 +119,7 @@ class Settings(BaseSettings):
     mcp: MCPSettings = Field(default_factory=MCPSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
     upload: UploadSettings = Field(default_factory=UploadSettings)
+    claim_pipeline: ClaimPipelineSettings = Field(default_factory=ClaimPipelineSettings)
     prompts: dict[str, Any] = Field(default_factory=dict)
 
     model_config = SettingsConfigDict(
@@ -154,6 +163,7 @@ def load_all_configs() -> Settings:
     mcp_data = yaml_data.get("mcp_settings", {})
     agent_data = yaml_data.get("agent_settings", {})
     upload_data = yaml_data.get("upload_settings", {})
+    claim_data = yaml_data.get("claim_pipeline", {})
 
     # Allow CORS origins to be overridden via env (comma-separated). Falls back
     # to the YAML value when the env var is unset/empty.
@@ -173,6 +183,7 @@ def load_all_configs() -> Settings:
         mcp=MCPSettings(**mcp_data),
         agent=AgentSettings(**agent_data),
         upload=UploadSettings(**upload_data),
+        claim_pipeline=ClaimPipelineSettings(**claim_data),
         prompts=prompts,
     )
 

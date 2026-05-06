@@ -8,27 +8,44 @@ from src.core.exceptions import RerankerError
 from src.core.logger import logger
 from src.engines.openai_client import OpenAIClient
 from src.mcp.client import audit_log, guardrails_redact, guardrails_scan
-from src.retrieval.hybrid_search import HybridSearcher
+from src.retrieval.hybrid_search import HybridSearcher, ensure_chunk_ids
 from src.retrieval.reranker import BGEReranker
 from src.schemas.agent_schemas import GuardrailsReport, RelevanceStatus
+from src.schemas.claim_schemas import ClaimStatus
+from src.workflow.agents.claim_drafter import ClaimDrafter
+from src.workflow.agents.claim_verifier import ClaimVerifier
 from src.workflow.agents.relevance_checker import (
     RelevanceCheckerAgent as RelevanceChecker,
 )
-from src.workflow.agents.researcher import ResearchAgent
-from src.workflow.agents.verifier import VerificationAgent
+from src.workflow.claim_pipeline.repair import repair_claims as _repair_claims
+from src.workflow.claim_pipeline.render import render_final_answer
 from src.workflow.memory import AgentState
 
 
 class RAGOrchestrator:
-    """Orchestrates the multi-agent RAG workflow with a self-correcting feedback loop."""
+    """Orchestrates the claim-grounded multi-agent RAG workflow."""
 
     def __init__(self, searcher: HybridSearcher):
         self.searcher = searcher
         self.llm_engine = OpenAIClient()
 
         self.relevance_checker = RelevanceChecker(self.llm_engine)
-        self.researcher = ResearchAgent(self.llm_engine)
-        self.verifier = VerificationAgent(self.llm_engine)
+
+        self.claim_drafter = ClaimDrafter(
+            self.llm_engine,
+            max_claims=app_settings.claim_pipeline.drafter_max_claims,
+        )
+        # Dedicated single-claim drafter for repair: shorter prompt, max 1 claim,
+        # ~5–10s vs the main drafter's ~25-30s. Without this, each repair call
+        # was producing 11–12 unused claims and exhausting the budget.
+        self.repair_drafter = ClaimDrafter(
+            self.llm_engine,
+            single_claim_mode=True,
+        )
+        self.claim_verifier = ClaimVerifier(
+            self.llm_engine,
+            concurrency=app_settings.claim_pipeline.verify_concurrency,
+        )
 
         self.reranker = (
             BGEReranker(app_settings.rerank.model_name) if app_settings.rerank.enabled else None
@@ -37,16 +54,18 @@ class RAGOrchestrator:
         self.app = self._build_graph()
 
     def _build_graph(self):
-        """Define nodes and self-correcting edges of the workflow."""
+        """Define nodes and edges of the claim-grounded workflow."""
         workflow = StateGraph(AgentState)
 
         workflow.add_node("guardrails_input", self.node_guardrails_input)
         workflow.add_node("retrieve", self.node_retrieve)
         workflow.add_node("rerank", self.node_rerank)
         workflow.add_node("check_relevance", self.node_check_relevance)
-        workflow.add_node("research", self.node_research)
         workflow.add_node("guardrails_output", self.node_guardrails_output)
-        workflow.add_node("verify", self.node_verify)
+        workflow.add_node("draft_claims", self.node_draft_claims)
+        workflow.add_node("verify_claims", self.node_verify_claims)
+        workflow.add_node("repair_claims", self.node_repair_claims)
+        workflow.add_node("finalize", self.node_finalize)
 
         workflow.add_edge(START, "guardrails_input")
         workflow.add_edge("guardrails_input", "retrieve")
@@ -56,17 +75,17 @@ class RAGOrchestrator:
         workflow.add_conditional_edges(
             "check_relevance",
             self.decide_after_relevance,
-            {"proceed": "research", "stop": END},
+            {"proceed": "draft_claims", "stop": "finalize"},
         )
-
-        workflow.add_edge("research", "guardrails_output")
-        workflow.add_edge("guardrails_output", "verify")
-
+        workflow.add_edge("draft_claims", "guardrails_output")
+        workflow.add_edge("guardrails_output", "verify_claims")
         workflow.add_conditional_edges(
-            "verify",
-            self.decide_after_verification,
-            {"finalize": END, "retry": "research"},
+            "verify_claims",
+            self.decide_after_claim_verification,
+            {"finalize": "finalize", "repair": "repair_claims"},
         )
+        workflow.add_edge("repair_claims", "verify_claims")
+        workflow.add_edge("finalize", END)
 
         return workflow.compile()
 
@@ -124,16 +143,19 @@ class RAGOrchestrator:
     async def node_guardrails_output(self, state: AgentState) -> dict[str, Any]:
         logger.info("--- NODE: GUARDRAILS OUTPUT ---")
         session_id = state.get("audit_session_id", "")
-        draft = state.get("draft_answer", "")
+        # Scan the joined claim text — claims are the new source of truth for
+        # generated content. If guardrails redacts, we short-circuit by setting
+        # final_answer directly; node_finalize respects a pre-set final_answer.
+        scan_text = " ".join(c.text for c in (state.get("claims") or []))
 
         if (
             not app_settings.mcp.guardrails.enabled
             or not app_settings.mcp.guardrails.scan_output
-            or not draft
+            or not scan_text
         ):
             return {}
 
-        scan_result = await guardrails_scan(draft)
+        scan_result = await guardrails_scan(scan_text)
 
         updates: dict[str, Any] = {}
 
@@ -155,11 +177,11 @@ class RAGOrchestrator:
             )
 
         if scan_result.has_pii:
-            redacted = await guardrails_redact(draft)
-            updates["draft_answer"] = redacted.redacted_text
+            redacted = await guardrails_redact(scan_text)
+            updates["final_answer"] = redacted.redacted_text
             logger.warning(
-                f"PII detected in draft answer: {len(scan_result.detections)} detection(s). "
-                "Answer redacted before verification."
+                f"PII detected in claim text: {len(scan_result.detections)} detection(s). "
+                "Final answer set to redacted text; downstream rendering will be skipped."
             )
             await audit_log(
                 session_id,
@@ -180,6 +202,7 @@ class RAGOrchestrator:
         logger.info("--- NODE: RETRIEVAL ---")
         retriever = await self.searcher.aget_retriever()
         docs = await retriever.ainvoke(state["question"])
+        docs = ensure_chunk_ids(docs)
 
         session_id = state.get("audit_session_id", "")
         await audit_log(
@@ -251,42 +274,68 @@ class RAGOrchestrator:
 
         return {"relevance_status": status}
 
-    async def node_research(self, state: AgentState) -> dict[str, Any]:
-        logger.info("--- NODE: RESEARCH & DRAFTING ---")
-        current_iter = state.get("iterations", 0)
-        answer = await self.researcher.generate(state["question"], state["documents"])
+    # -- Claim-grounded pipeline nodes --
 
-        session_id = state.get("audit_session_id", "")
+    async def node_draft_claims(self, state: AgentState) -> dict[str, Any]:
+        logger.info("--- NODE: DRAFT CLAIMS ---")
+        claim_set = await self.claim_drafter.draft(state["question"], state["documents"])
+        # Materialize Claims with status=PENDING so the verifier actually runs.
+        # ClaimSet.claims are DraftedClaim (no status field) by design.
+        claims = claim_set.to_pending_claims()
         await audit_log(
-            session_id,
-            "answer_generated",
-            "research",
-            {"iteration": current_iter + 1, "answer_length": len(answer)},
+            state.get("audit_session_id", ""),
+            "claims_drafted",
+            "draft_claims",
+            {"count": len(claims), "claim_ids": [c.id for c in claims]},
         )
+        return {"claims": claims}
 
-        return {"draft_answer": answer, "iterations": current_iter + 1}
-
-    async def node_verify(self, state: AgentState) -> dict[str, Any]:
-        logger.info("--- NODE: VERIFICATION AUDIT ---")
-        report = await self.verifier.verify(
-            state["question"],
-            state["draft_answer"],
-            state["documents"],
+    async def node_verify_claims(self, state: AgentState) -> dict[str, Any]:
+        logger.info("--- NODE: VERIFY CLAIMS ---")
+        pending = [
+            c for c in (state.get("claims") or []) if c.status == ClaimStatus.PENDING
+        ]
+        verified = await self.claim_verifier.verify(
+            state["question"], pending, state["documents"]
         )
-
-        session_id = state.get("audit_session_id", "")
+        by_id = {c.id: c for c in (state.get("claims") or [])}
+        for c in verified:
+            by_id[c.id] = c
         await audit_log(
-            session_id,
-            "verification_completed",
-            "verify",
-            {
-                "supported": report.supported,
-                "unsupported_count": len(report.unsupported_claims),
-                "contradiction_count": len(report.contradictions),
-            },
+            state.get("audit_session_id", ""),
+            "claims_verified",
+            "verify_claims",
+            {"results": [{"id": c.id, "status": c.status.value} for c in verified]},
         )
+        return {"claims": list(by_id.values())}
 
-        return {"verification": report}
+    async def node_repair_claims(self, state: AgentState) -> dict[str, Any]:
+        logger.info("--- NODE: REPAIR CLAIMS ---")
+        updated, augmented = await _repair_claims(
+            question=state["question"],
+            claims=state.get("claims") or [],
+            chunks=state["documents"],
+            drafter=self.repair_drafter,
+            searcher=self.searcher,
+            max_attempts=app_settings.claim_pipeline.max_repair_rounds,
+        )
+        repaired = [c for c in updated if c.attempts > 0]
+        await audit_log(
+            state.get("audit_session_id", ""),
+            "claims_repaired",
+            "repair_claims",
+            {"repaired_ids": [c.id for c in repaired]},
+        )
+        return {"claims": updated, "documents": augmented}
+
+    async def node_finalize(self, state: AgentState) -> dict[str, Any]:
+        logger.info("--- NODE: FINALIZE ---")
+        # If guardrails_output already set final_answer (PII redaction path),
+        # respect it and skip rendering.
+        if state.get("final_answer"):
+            return {}
+        claims = state.get("claims") or []
+        return {"final_answer": render_final_answer(claims)}
 
     # -- Routing --
 
@@ -296,18 +345,20 @@ class RAGOrchestrator:
             return "stop"
         return "proceed"
 
-    def decide_after_verification(self, state: AgentState) -> str:
-        report = state["verification"]
-
-        if report.supported:
-            return "finalize"
-
-        if state["iterations"] >= app_settings.app.max_iterations:
-            logger.error("Max retries reached. Returning best-effort answer.")
-            return "finalize"
-
-        logger.info(f"Hallucination found (iter {state['iterations']}). Retrying...")
-        return "retry"
+    def decide_after_claim_verification(self, state: AgentState) -> str:
+        claims = state.get("claims") or []
+        bad = [
+            c
+            for c in claims
+            if c.status in (ClaimStatus.UNSUPPORTED, ClaimStatus.CONTRADICTED)
+        ]
+        repairable = [
+            c for c in bad if c.attempts < app_settings.claim_pipeline.max_repair_rounds
+        ]
+        if repairable:
+            logger.info(f"decide: routing {len(repairable)} claim(s) to repair")
+            return "repair"
+        return "finalize"
 
     async def run(self, question: str, session_id: str = ""):
         """Execute the state machine for a given question."""
@@ -315,20 +366,34 @@ class RAGOrchestrator:
             "question": question,
             "candidate_documents": [],
             "documents": [],
-            "iterations": 0,
             "guardrails_report": None,
             "audit_session_id": session_id,
+            "claims": None,
+            "final_answer": None,
         }
-        result = await self.app.ainvoke(initial_state)
+        budget = app_settings.claim_pipeline.total_budget_seconds
+        try:
+            if budget:
+                result = await asyncio.wait_for(
+                    self.app.ainvoke(initial_state), timeout=budget
+                )
+            else:
+                result = await self.app.ainvoke(initial_state)
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Run exceeded budget {budget}s; returning truncated state."
+            )
+            result = {
+                **initial_state,
+                "truncated": True,
+                "final_answer": render_final_answer([]),
+            }
 
         await audit_log(
             session_id,
             "answer_delivered",
             "orchestrator",
-            {
-                "final_status": "answered",
-                "total_iterations": result.get("iterations", 0),
-            },
+            {"final_status": "answered"},
         )
 
         return result
@@ -343,14 +408,28 @@ class RAGOrchestrator:
             "question": question,
             "candidate_documents": [],
             "documents": [],
-            "iterations": 0,
             "guardrails_report": None,
             "audit_session_id": session_id,
+            "claims": None,
+            "final_answer": None,
         }
 
         accumulated: dict[str, Any] = {}
 
+        deadline = (
+            asyncio.get_event_loop().time()
+            + app_settings.claim_pipeline.total_budget_seconds
+        )
+
         async for chunk in self.app.astream(initial_state, stream_mode="updates"):
+            if deadline and asyncio.get_event_loop().time() > deadline:
+                logger.warning("astream exceeded budget; emitting truncated result.")
+                yield "result", {
+                    **accumulated,
+                    "truncated": True,
+                    "answer": render_final_answer(accumulated.get("claims") or []),
+                }
+                return
             for node_name, delta in chunk.items():
                 if not isinstance(delta, dict):
                     # Try to coerce pydantic models / objects with dict()/model_dump()
@@ -373,24 +452,43 @@ class RAGOrchestrator:
                         continue
                     delta = coerced
                 accumulated.update(delta)
+                # Per-claim events when this delta carries claims.
+                if "claims" in delta and isinstance(delta["claims"], list):
+                    if node_name == "draft_claims":
+                        for claim in delta["claims"]:
+                            yield "claim_drafted", {"claim": claim.model_dump()}
+                    elif node_name == "verify_claims":
+                        for claim in delta["claims"]:
+                            if claim.status != ClaimStatus.PENDING:
+                                yield "claim_verified", {
+                                    "claim_id": claim.id,
+                                    "status": claim.status.value,
+                                    "note": claim.verifier_note,
+                                }
+                    elif node_name == "repair_claims":
+                        for claim in delta["claims"]:
+                            if claim.attempts > 0:
+                                yield "claim_repaired", {
+                                    "claim_id": claim.id,
+                                    "status": claim.status.value,
+                                }
                 extra: dict[str, Any] = {}
                 if node_name == "retrieve":
                     extra["doc_count"] = len(delta.get("candidate_documents") or [])
-                elif node_name == "verify" and "verification" in delta:
-                    report = delta["verification"]
-                    extra["supported"] = bool(getattr(report, "supported", False))
-                elif node_name == "research":
-                    extra["iteration"] = accumulated.get("iterations", 0)
                 yield "step", {"node": node_name, "status": "completed", **extra}
 
-        yield "result", accumulated
+        result_payload: dict[str, Any] = dict(accumulated)
+        result_payload["answer"] = accumulated.get("final_answer") or ""
+        if accumulated.get("claims"):
+            result_payload["claims"] = [
+                c.model_dump() if hasattr(c, "model_dump") else c
+                for c in accumulated["claims"]
+            ]
+        yield "result", result_payload
 
         await audit_log(
             session_id,
             "answer_delivered",
             "orchestrator",
-            {
-                "final_status": "answered",
-                "total_iterations": accumulated.get("iterations", 0),
-            },
+            {"final_status": "answered"},
         )

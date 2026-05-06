@@ -9,14 +9,14 @@ Upload any PDF, ask it questions — the chatbot answers only from your document
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-<!-- Drop a screenshot or GIF of the Streamlit UI here once captured:
+<!-- Drop a screenshot or GIF of the Angular UI here once captured:
 ![UI screenshot](docs/screenshots/ui-demo.png) -->
 
 ---
 
 ## What makes this different
 
-- **Self-correcting agent loop (LangGraph).** A Relevance Checker → Researcher → Verifier pipeline re-runs retrieval when the verifier flags unsupported claims. Bounded by `app.max_iterations`, so it cannot loop forever.
+- **Claim-grounded self-correcting agent loop (LangGraph).** Drafter emits a structured list of atomic claims, each with verbatim citations to retrieved chunks. A per-claim verifier flags unsupported/contradicted claims and routes them through a single per-claim repair pass (re-retrieve + redraft scoped to the claim). The UI renders each claim with a `✓` / `⚠` / `✕` badge so users see what's verified and what isn't.
 - **Measured retrieval quality.** Hybrid BM25 + dense retrieval with a cross-encoder reranker lifts Context Precision from **0.673 → 0.923 (+25.0 pp)** on a 200-item RAGAS golden set — not a hand-wavy "LangChain demo" claim, a reproducible number.
 - **Per-session PDF upload.** Visitors drop their own PDF; it's ingested into a session-scoped Pinecone namespace and isolated from the default corpus and from every other visitor. No cross-contamination.
 - **Production-flavoured compliance primitives via MCP.** Two FastMCP servers wired into the graph: regex-based PII guardrails (12 PT/EU + international patterns with checksum validation) and a SQLite audit trail keyed by session ID, queryable at `GET /api/audit/{session_id}`.
@@ -35,18 +35,18 @@ The aggressive `top_k=5` config was rejected because it broke recall on comparis
 ## Architecture
 
 ```
-┌─────────────────┐     HTTPS     ┌──────────────────┐
-│  Streamlit UI   │ ────────────► │   FastAPI Backend │
-│   (port 8501)   │               │   (port 8001)     │
-└─────────────────┘               └──────────────────┘
-                                          │
-                     ┌────────────────────┼────────────────────┐
-                     ▼                    ▼                    ▼
-              Vector Store           LLM (OpenAI)         MCP Servers
-           (Pinecone / Chroma)       GPT-4o-mini      (Guardrails + Audit)
+┌──────────────────┐  HTTPS  ┌────────────────────┐  HTTPS  ┌────────────────┐
+│  Angular SPA     │ ──────► │  nginx /api/ proxy │ ──────► │ FastAPI (8001) │
+│  (nginx, 8080)   │  same-  │  (same container)  │ ACA-int │   internal-only│
+└──────────────────┘ origin  └────────────────────┘         └────────────────┘
+                                                                    │
+                           ┌────────────────────────────────────────┼──────┐
+                           ▼                                        ▼      ▼
+                    Vector Store                          LLM (OpenAI)  MCP Servers
+                 (Pinecone / Chroma)                       GPT-4o-mini  (Guardrails + Audit)
 ```
 
-**LangGraph flow:** `guardrails_input → retrieve → rerank → check_relevance → research → guardrails_output → verify` (with a retry edge back to `retrieve` when the verifier rejects the draft answer).
+**LangGraph flow:** `guardrails_input → retrieve → rerank → check_relevance → draft_claims → guardrails_output → verify_claims → (repair_claims → verify_claims)? → finalize`. Per-claim verification, per-claim repair (capped at one round), bounded by a wall-clock budget — no blind retries.
 
 **Retrieval:** Hybrid search (BM25 40% + dense 60% via `EnsembleRetriever`) fans out to `rerank.candidate_k=30` candidates, then `BAAI/bge-reranker-base` picks the top `rerank.top_k=10`.
 
@@ -94,7 +94,7 @@ cp .env.example .env        # then fill in OPENAI_API_KEY (required)
 
 # Run API + UI in two terminals
 uv run uvicorn src.api.app:app --reload --port 8001
-uv run streamlit run ui/streamlit_frontend.py --server.port 8501
+cd frontend && npm install && npm start    # Angular dev server on :4200
 
 # Optional: CLI
 uv run python -m src.main
@@ -102,14 +102,19 @@ uv run python -m src.main
 
 ## Quick Start — Docker
 
+Compose runs the API only (Angular dev server is `npm start` from `frontend/`):
+
 ```bash
 cp .env.example .env
 docker compose up --build -d
 
 # Services:
 #   API      → http://localhost:8001
-#   UI       → http://localhost:8501
 #   API docs → http://localhost:8001/docs
+
+# UI (separate terminal):
+cd frontend && npm start
+#   Angular dev → http://localhost:4200
 ```
 
 Multi-stage image, CPU-only PyTorch pinned via `[tool.uv.sources]`, non-root user, no `build-essential` at runtime.
@@ -145,17 +150,17 @@ Every response carries an `X-Request-ID` header; logs surface the same ID so a s
 ├── data/              # Raw docs, cache, vector DB (gitignored)
 ├── docs/              # Azure deployment runbook, design specs
 ├── evaluation/        # RAGAS evaluation pipeline + golden sets
-├── infra/             # Bicep IaC for the Azure stack
+├── frontend/          # Angular 19 SPA + nginx Dockerfile (production)
+├── infra/terraform/   # Terraform IaC for the Azure stack
 ├── src/
 │   ├── api/           # FastAPI app, routes, schemas, middleware
 │   ├── core/          # Config loader, logger, exceptions
 │   ├── engines/       # OpenAI client, embedding model
 │   ├── mcp/           # MCP servers (guardrails PII + audit trail)
 │   ├── retrieval/     # Document processor, hybrid search, vector store, reranker
-│   ├── schemas/       # Pydantic schemas
-│   └── workflow/      # LangGraph orchestrator, agents, memory
+│   ├── schemas/       # Pydantic schemas (incl. claim-grounded pipeline)
+│   └── workflow/      # LangGraph orchestrator, agents, claim pipeline
 ├── tests/             # pytest suite (mirrors src/, 67% coverage)
-├── ui/                # Streamlit frontend
 └── pyproject.toml     # Dependencies, tool config (uv-managed)
 ```
 

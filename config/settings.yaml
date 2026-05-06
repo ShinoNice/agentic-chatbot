@@ -43,13 +43,13 @@ upload_settings:
 # Application Settings
 app:
   debug_mode: true
-  max_iterations: 3
   # Lock CORS to known origins. Production origins should be supplied via the
   # CORS_ALLOWED_ORIGINS env var (comma-separated) — the loader will replace
   # this list when that var is set. The defaults below are localhost-only for
-  # host dev (Streamlit + Docker Compose + Angular).
+  # host dev (Angular on :4200, API on :8001, Docker Compose).
+  # Prod hits the API same-origin via the nginx /api/ proxy, so no prod
+  # FQDN is required here.
   cors_origins:
-    - "http://localhost:8501"
     - "http://localhost:8001"
     - "http://localhost:4200"
 
@@ -76,3 +76,10 @@ mcp_settings:
     enabled: true
     db_path: "data/audit/audit.db"
     retention_days: 90                   # 0 = keep forever
+
+# Claim-grounded pipeline.
+claim_pipeline:
+  max_repair_rounds: 1
+  drafter_max_claims: 12
+  verify_concurrency: 5
+  total_budget_seconds: 180
