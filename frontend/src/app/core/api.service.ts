@@ -11,6 +11,12 @@ import {
 const DEFAULT_BASE = 'http://localhost:8001';
 const STORAGE_KEY = 'agentic-api-base-url';
 
+declare global {
+  interface Window {
+    __APP_CONFIG__?: { apiBaseUrl?: string };
+  }
+}
+
 function isValidHttpUrl(value: string): boolean {
   try {
     const u = new URL(value);
@@ -20,7 +26,22 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+/**
+ * Resolution order:
+ *   1. Runtime-injected `window.__APP_CONFIG__.apiBaseUrl` (set by
+ *      frontend/entrypoint.sh in prod). An empty string is a valid
+ *      "same-origin" signal — nginx will proxy /api locally.
+ *   2. localStorage override (user-configurable in the sidebar — dev only).
+ *   3. DEFAULT_BASE for hot-reload dev.
+ */
 function loadInitialBaseUrl(): string {
+  const injected = window.__APP_CONFIG__?.apiBaseUrl;
+  if (injected !== undefined && injected !== '__API_BASE_URL__') {
+    // Empty string = same-origin (nginx proxy). Anything non-empty must validate.
+    if (injected === '' || isValidHttpUrl(injected)) return injected;
+    console.warn('[ApiService] injected apiBaseUrl invalid, ignoring', injected);
+  }
+
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) return DEFAULT_BASE;
   if (isValidHttpUrl(stored)) return stored;

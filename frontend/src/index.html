@@ -11,7 +11,7 @@
       against any host the user enters in the sidebar.
     - font-src/style-src include Google Fonts (referenced from index.html).
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,6 +19,14 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!--
+    Runtime config — populated by frontend/entrypoint.sh at container
+    startup so the same image works across environments. In dev the
+    placeholder stays as-is and the SPA falls back to localStorage /
+    DEFAULT_BASE; an empty string means same-origin (nginx proxies /api).
+  -->
+  <script>window.__APP_CONFIG__ = { apiBaseUrl: "__API_BASE_URL__" };</script>
 </head>
 <body>
   <app-root></app-root>
