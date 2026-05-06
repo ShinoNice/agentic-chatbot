@@ -75,21 +75,31 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Both apps share the same image (single Dockerfile). Tag twice so the
-      # Terraform reference to chatbot-api:<tag> and chatbot-ui:<tag> both
-      # resolve. Phase B2 will split this into two separate builds (api + ui).
-      - name: Build and push images
+      # api: FastAPI/Python image, root Dockerfile.
+      - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile
           push: true
           tags: |
             ${{ env.ACR_NAME }}.azurecr.io/chatbot-api:${{ env.IMAGE_TAG }}
-            ${{ env.ACR_NAME }}.azurecr.io/chatbot-ui:${{ env.IMAGE_TAG }}
             ${{ env.ACR_NAME }}.azurecr.io/chatbot-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      # ui: Angular SPA + nginx, frontend/Dockerfile.
+      - name: Build and push UI image (Angular)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/chatbot-ui:${{ env.IMAGE_TAG }}
             ${{ env.ACR_NAME }}.azurecr.io/chatbot-ui:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=ui
+          cache-to: type=gha,mode=max,scope=ui
 
   deploy:
     name: Deploy Terraform
@@ -152,14 +162,33 @@ jobs:
       - name: Smoke-test public UI
         run: |
           URL='${{ steps.outputs.outputs.ui_url }}'
-          # Streamlit returns 200 on / once the server is up; retry a few times.
+          # Three checks: nginx 200, Angular bundle served (<app-root>),
+          # and the runtime config script was injected.
           for i in 1 2 3 4 5; do
-            if curl -fsS "$URL" > /dev/null; then
-              echo "UI reachable."
+            BODY=$(curl -fsS "$URL" 2>/dev/null) && \
+              echo "$BODY" | grep -q '<app-root>' && \
+              echo "$BODY" | grep -q '__APP_CONFIG__' && {
+                echo "UI reachable, Angular bundle present, runtime config injected."
+                exit 0
+              }
+            echo "Attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          echo "UI smoke test failed."
+          exit 1
+
+      - name: Smoke-test API proxy
+        run: |
+          URL='${{ steps.outputs.outputs.ui_url }}'
+          # The Angular UI nginx proxies /api/* to the api container.
+          # /api/health should return 200 with a JSON body.
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$URL/api/health" | grep -q '"status"'; then
+              echo "API proxy reachable through UI host."
               exit 0
             fi
             echo "Attempt $i failed, retrying in 15s..."
             sleep 15
           done
-          echo "UI smoke test failed."
+          echo "API proxy smoke test failed."
           exit 1

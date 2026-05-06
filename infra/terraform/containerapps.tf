@@ -134,8 +134,11 @@ resource "azurerm_container_app" "api" {
 }
 
 # ── UI container app (public ingress) ────────────────────────────────────────
-# NOTE: kept on streamlit / port 8501 to match the live deployment.
-# The Angular swap is a separate phase.
+# Angular SPA served by nginx, built from frontend/Dockerfile.
+# Listens on 8080. nginx reverse-proxies /api/* to the api container app
+# via internal ACA DNS, so API_BASE_URL is empty (= same-origin) and the
+# browser never needs to know the api hostname.
+# Image entrypoint is nginx — no command/args override here.
 
 resource "azurerm_container_app" "ui" {
   name                         = local.ui_app_name
@@ -155,7 +158,7 @@ resource "azurerm_container_app" "ui" {
 
   ingress {
     external_enabled = true
-    target_port      = 8501
+    target_port      = 8080
     transport        = "http"
     traffic_weight {
       latest_revision = true
@@ -168,28 +171,16 @@ resource "azurerm_container_app" "ui" {
     max_replicas = 3
 
     container {
-      name    = "ui"
-      image   = "${local.acr_login_server}/chatbot-ui:${var.image_tag}"
-      cpu     = tonumber(var.cpu)
-      memory  = var.memory
-      command = ["streamlit"]
-      args    = ["run", "ui/streamlit_frontend.py"]
+      name   = "ui"
+      image  = "${local.acr_login_server}/chatbot-ui:${var.image_tag}"
+      cpu    = tonumber(var.cpu)
+      memory = var.memory
 
       env {
-        name  = "API_BASE_URL"
-        value = local.api_internal_url
-      }
-      env {
-        name  = "STREAMLIT_SERVER_PORT"
-        value = "8501"
-      }
-      env {
-        name  = "STREAMLIT_SERVER_ADDRESS"
-        value = "0.0.0.0"
-      }
-      env {
-        name  = "STREAMLIT_SERVER_HEADLESS"
-        value = "true"
+        name = "API_BASE_URL"
+        # Empty string = same-origin. nginx /api/ block proxies through to
+        # the api container, so the browser does not need a backend URL.
+        value = ""
       }
     }
   }
