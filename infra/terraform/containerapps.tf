@@ -14,7 +14,7 @@ locals {
   api_internal_fqdn = "${local.api_app_name}.internal.${azurerm_container_app_environment.aca.default_domain}"
 
   # Versionless KV secret IDs — ACA resolves the latest version on each
-  # replica refresh, mirroring the Bicep keyVaultUrl behavior.
+  # replica refresh.
   openai_kv_secret_id    = "${data.azurerm_key_vault.kv.vault_uri}secrets/OPENAI-API-KEY"
   pinecone_kv_secret_id  = "${data.azurerm_key_vault.kv.vault_uri}secrets/PINECONE-API-KEY"
   langsmith_kv_secret_id = "${data.azurerm_key_vault.kv.vault_uri}secrets/LANGSMITH-API-KEY"

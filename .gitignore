@@ -47,8 +47,9 @@ evaluation/results/*
 !evaluation/results/delta_*.csv
 evaluation/results/report_*_full.csv
 
-# ─── Miscellaneous ───────────────────────────────────────────────────────────
-#misc/
+# ─── Node / Angular ──────────────────────────────────────────────────────────
+node_modules/
+.angular/
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
@@ -81,5 +82,6 @@ htmlcov/
 # Local session state (per-machine, not repo state).
 PROGRESS.md
 PROJECT_SUMMARY.md
+PROJECT.md
 docs/
 CLAUDE.md
