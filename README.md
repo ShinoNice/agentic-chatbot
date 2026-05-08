@@ -178,16 +178,15 @@ See [.env.example](.env.example) for the full template.
 
 ## Deployment
 
-The live demo runs on Azure Container Apps. One-shot deployment via Bicep:
+The live demo runs on Azure Container Apps. Infrastructure is provisioned via Terraform in [infra/terraform/](infra/terraform/) and deployed through the `Deploy to Azure` GitHub Actions workflow ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) — a manual `workflow_dispatch` that builds & pushes the API and UI images to ACR, then runs `terraform apply`.
+
+To apply locally instead:
 
 ```bash
-az deployment group create \
-  --resource-group rg-agentic-chatbot \
-  --template-file infra/main.bicep \
-  --parameters @infra/main.parameters.json
+cd infra/terraform
+terraform init
+terraform apply
 ```
-
-Full deployment notes (including the ACA internal/public split, Key Vault wiring, and the quirks of `az containerapp update` CLI arg parsing) live in [docs/azure-deployment-notes.md](docs/azure-deployment-notes.md).
 
 ## License
 

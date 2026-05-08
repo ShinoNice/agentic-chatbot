@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Agentic Chatbot — Azure Container Apps stack (Terraform mirror of main.bicep)
+# Agentic Chatbot — Azure Container Apps stack
 #
 # Provisions:
 #   - Log Analytics workspace (needed by the ACA env for logs/metrics)
